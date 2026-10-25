@@ -21,7 +21,7 @@ export function waveComposition(n, table, elite) {
   return {
     groups,
     boss,
-    hpMultiplier: 1 + table.hpGrowth * (n - 1),
+    hpMultiplier: 1 + table.hpGrowth * (n - 1) + table.hpGrowthLate * (n - 1) ** 2,
     damageMultiplier: 1 + table.damageGrowth * (n - 1),
     eliteChance,
   };

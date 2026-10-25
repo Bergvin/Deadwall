@@ -220,3 +220,32 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 .setting.check input { accent-color: var(--gold); }
 .screen .settings { margin-top: 18px; }
 .pausebadge { display: none; }
+
+/* --- responsive: laptops and small windows --- */
+.wavebtn { white-space: nowrap; }
+.topbar { min-width: 0; }
+.topbar .stat { flex: none; }
+.panel.wide { max-height: calc(100vh - 250px); }
+@media (max-width: 1400px) {
+  .topbar { gap: 10px; padding: 0 10px; }
+  .logo { font-size: 18px; letter-spacing: 2px; }
+  .stat { font-size: 13px; gap: 4px; }
+  .stat .label { font-size: 10px; letter-spacing: 0; }
+  .stat .bar.wide { width: 70px; }
+  .mode { display: none; }
+  .help { display: none; }
+}
+@media (max-width: 1100px) {
+  .stat.breaches .label, .stat.heroes .label, .stat.enemies .label { display: none; }
+  .controls .btn { padding: 4px 7px; font-size: 12px; }
+  .btn.icon { min-width: 0; }
+  .card { width: 104px; padding: 6px; }
+  .card.hero { width: 104px; }
+  .card .meta { font-size: 10px; }
+  .panel, .panel.wide { width: 250px; top: 52px; right: 8px; }
+  .preview { max-width: 38vw; font-size: 11px; }
+}
+/* Short windows: keep the side panel clear of the build bar. */
+@media (max-height: 760px) {
+  .panel, .panel.wide { max-height: calc(100vh - 230px); overflow-y: auto; }
+}

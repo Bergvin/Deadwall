@@ -21,6 +21,8 @@ export const HERO_RULES = {
   lowHealthWarning: 0.35,
   /** Reviving a fallen hero costs this fraction of everything invested in it. */
   reviveCostFactor: 0.35,
+  /** Each hero already recruited raises the next recruit's price by this fraction. */
+  recruitCostGrowth: 0.1,
   names: ['Aldric', 'Brienne', 'Cedric', 'Daria', 'Edmund', 'Freya', 'Garrick', 'Helena',
     'Ivor', 'Johanna', 'Kendrick', 'Liora', 'Merek', 'Nessa', 'Osric', 'Rowena', 'Tobias', 'Wynn',
     'Alaric', 'Beatrix', 'Corwin', 'Elspeth', 'Godric', 'Isolde', 'Leofric', 'Maude', 'Percival', 'Sybil'],
@@ -75,7 +77,7 @@ export const HEROES = {
     description: 'Explosive magic that shreds packed hordes. Fragile and expensive.',
     strengths: 'Dense groups, slowing the horde', weaknesses: 'Lone or magic-resistant enemies',
     model: 'mage',
-    cost: 140,
+    cost: 120,
     hp: 70,
     damage: 16, damageType: 'magic',
     attackInterval: 1.3,
@@ -85,19 +87,19 @@ export const HEROES = {
     growth: { damage: 0.1, aoe: 0.03, hp: 0.04 },
     abilities: {
       fireball: {
-        name: 'Fireball', unlock: 1, cooldown: 14, target: 'point',
+        name: 'Fireball', unlock: 1, cooldown: 16, target: 'point',
         description: 'Explodes on impact and sets the area ablaze.',
-        damage: 55, radius: 2, burnDps: 6, burnDuration: 3, speed: 10,
+        damage: 40, radius: 1.8, burnDps: 4, burnDuration: 3, speed: 10,
       },
       frostNova: {
-        name: 'Frost Nova', unlock: 2, cooldown: 18, target: 'none',
+        name: 'Frost Nova', unlock: 2, cooldown: 22, target: 'none',
         description: 'A freezing pulse around the mage that slows enemies.',
         damage: 15, radius: 3, slow: 0.5, slowDuration: 4,
       },
       arcaneBlast: {
-        name: 'Arcane Blast', unlock: 4, cooldown: 20, target: 'point',
+        name: 'Arcane Blast', unlock: 4, cooldown: 24, target: 'point',
         description: 'A concentrated burst of raw magic.',
-        damage: 130, radius: 1.3,
+        damage: 95, radius: 1.2,
       },
     },
     talents: [

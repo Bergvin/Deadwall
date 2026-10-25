@@ -165,7 +165,7 @@ export class Hud {
         c.title = `${t.description}\nStrong: ${t.strengths}\nWeak: ${t.weaknesses}`;
         c.addEventListener('click', () => this.actions.recruit(key));
         this.cards.append(c);
-        this.cardEls[key] = { el: c, cost: () => t.cost };
+        this.cardEls[key] = { el: c, cost: () => this.sim.heroes.recruitCost(key) };
       }
     }
     this.refresh();

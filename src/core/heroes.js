@@ -55,10 +55,16 @@ export class HeroSystem {
     h.hp = Math.round(h.maxHp * ratio);
   }
 
+  /** Price of the next recruit: grows with every hero already in the company. */
+  recruitCost(typeKey) {
+    const t = this.types[typeKey];
+    return Math.round(t.cost * (1 + this.rules.recruitCostGrowth * this.#heroes.size));
+  }
+
   canRecruit(typeKey) {
     const t = this.types[typeKey];
     if (!t) return { ok: false, reason: 'unknown_type' };
-    if (!this.economy.canAfford(t.cost)) return { ok: false, reason: 'insufficient_gold' };
+    if (!this.economy.canAfford(this.recruitCost(typeKey))) return { ok: false, reason: 'insufficient_gold' };
     return { ok: true };
   }
 
@@ -70,7 +76,8 @@ export class HeroSystem {
       return null;
     }
     const t = this.types[typeKey];
-    if (!this.economy.trySpend(t.cost, `recruit:${typeKey}`)) return null;
+    const price = this.recruitCost(typeKey);
+    if (!this.economy.trySpend(price, `recruit:${typeKey}`)) return null;
     const hero = {
       id: this.#nextId++,
       type: typeKey,
@@ -81,7 +88,7 @@ export class HeroSystem {
       talents: [],
       hp: 0, maxHp: 0,
       stats: null,
-      invested: t.cost,
+      invested: price,
       wallId: 0,
       moving: 0,
       cooldown: 0,

@@ -19,7 +19,7 @@ export const MAP = {
 };
 
 export const ECONOMY = {
-  startingGold: 400,
+  startingGold: 450,
   /** Fraction of the build cost returned when selling a wall, scaled by its health ratio. */
   sellRefund: 0.5,
   /** Construction and repair cost multiplier while a wave is in progress. */

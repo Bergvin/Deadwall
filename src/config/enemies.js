@@ -61,7 +61,7 @@ export const ZOMBIES = {
     name: 'Rotting Behemoth',
     boss: true,
     description: 'Smashes several wall sections at once and spits out more dead.',
-    hp: 1500, armor: 0.25, resist: 0.2,
+    hp: 1050, armor: 0.25, resist: 0.2,
     speed: 0.35,
     wallDamage: 60, attackInterval: 2,
     reward: 250, xp: 400,
@@ -74,7 +74,7 @@ export const ZOMBIES = {
     name: 'Gravelord',
     boss: true,
     description: 'Empowers the undead around it and charges the weakest wall.',
-    hp: 1400, armor: 0.2, resist: 0.35,
+    hp: 1100, armor: 0.2, resist: 0.35,
     speed: 0.45,
     wallDamage: 50, attackInterval: 1.6,
     reward: 250, xp: 400,
@@ -106,13 +106,17 @@ export const WAVE_TABLE = {
   groups: [
     { type: 'walker', from: 1, base: 8, perWave: 3 },
     { type: 'runner', from: 2, base: 2, perWave: 1.5 },
-    { type: 'brute', from: 4, base: 1, perWave: 0.5 },
+    { type: 'brute', from: 4, base: 1, perWave: 0.7 },
     { type: 'plague', from: 5, base: 1, perWave: 0.4 },
-    { type: 'siege', from: 6, base: 1, perWave: 0.35 },
+    { type: 'siege', from: 6, base: 1, perWave: 0.5 },
   ],
   bossEvery: 5,
   bosses: ['behemoth', 'gravelord'],
-  /** Enemy HP multiplier: 1 + hpGrowth * (n - 1). Damage: 1 + damageGrowth * (n - 1). */
+  /**
+   * Enemy HP multiplier: 1 + hpGrowth * (n - 1) + hpGrowthLate * (n - 1)^2 (gentle early,
+   * steeper late so endless runs end). Damage: 1 + damageGrowth * (n - 1).
+   */
   hpGrowth: 0.1,
+  hpGrowthLate: 0.013,
   damageGrowth: 0.04,
 };

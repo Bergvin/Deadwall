@@ -67,7 +67,7 @@ Kenney GLB files may reference `Textures/` next to them, so copy that folder alo
 | 3 | All 6 heroes, abilities, XP, and upgrades | done |
 | 4 | All 5 wall types, all zombie types, and bosses | done |
 | 5 | Effects, audio, UI polish, localStorage, atmosphere (fog, light) | done |
-| 6 | Balance via simulation; test everything in section 19 of the spec | |
+| 6 | Balance via simulation; test everything in section 19 of the spec | done (see docs/acceptance.md) |
 
 Each phase ends with: the user plays and gives feedback, then commit and push to `main`. Update the status column here as phases finish.
 
@@ -106,7 +106,7 @@ Each phase ends with: the user plays and gives feedback, then commit and push to
 - `npm test` runs the Node tests in `tests/*.test.js` (logic only, no browser).
 - `node tools/inspect-model.cjs <file.gltf|glb>…` prints meshes, skins, textures and animation names without dumping binary data.
 - `tools/patch.cjs <file>` reads `[[old, new], ...]` JSON on stdin and replaces each exactly once (fails loudly if missing). Use it via Python (`subprocess` + `json.dumps`) for multi-line edits; avoid `node -e` with template literals in Bash (backticks get eaten).
-- `node tools/simulate.js [runs] [line|none]` plays headless runs with a scripted strategy and prints the wave reached (balance check; archers-only line strategy: phase 2 ≈ wave 20, phase 3 ≈ wave 33 because heroes now level up; phase 4 ≈ wave 17 with mixed enemies and bosses; no defence = wave 1).
+- `node tools/simulate.js [runs] [none|walls|archers|mages|mixed|all] [maxMinutes]` plays headless runs with scripted strategies (rings of walls around the gate, recruiting, talents, ability use, repairs) and prints the wave reached. Phase 6 targets: none/walls = 1, single class ≈ 22, mixed ≈ 37. Re-run after any balance change and update docs/acceptance.md.
 - In the browser console: `debug.state()`, `debug.newGame(seed)`, `debug.sim()`, `debug.build(x, y)`, `debug.buildLine(x0, y0, x1, y1)`, `debug.sellAt(x, y)`, `debug.addGold(n)`, `debug.spawn(type, x, y, n)`, `debug.hero(type, x, y)` (recruit + deploy), `debug.damageWall(x, y, n)`, `debug.damageGate(n)`, `debug.fastForward(seconds)`, `debug.screenOf(x, y, h)` (cell → client pixel, for simulated clicks), `debug.cellAt(cx, cy)`. Note: the menu is shown first; start a run before using run commands.
 - `/tools/viewer/pieces.html?m=wall,wall-corner` shows Kenney pieces top-down at 0/90/180/270° (north up) to check orientation.
 - Controls: `B`/`1`–`4` build stone/reinforced/spiked/arcane wall, `U` upgrade selected wall, click the gate to repair/reinforce it, LMB place/select (drag previews a straight line, release builds it), RMB cancel, RMB-drag or WASD pan, wheel zoom (anchored at the cursor), `R` repair / Del sell selected wall, `M` move selected hero, Space pause, Enter start next wave, Esc cancel, `P` toggle the zombie path preview. Heroes tab → recruit → click a wall (green ring = free slot). Selected hero: `Q`/`E`/`F` abilities (targeted ones show a reach ring + area preview, click to cast).
