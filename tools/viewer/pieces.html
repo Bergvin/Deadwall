@@ -1,0 +1,35 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Pieces</title>
+<style>body{margin:0;background:#222}canvas{display:block}</style></head>
+<body>
+<script type="module">
+// Dev tool: shows model pieces at rotations 0/90/180/270 deg (columns), one row per piece.
+// Open /tools/viewer/pieces.html?m=wall,wall-corner while `npm run dev` runs.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+const names = (new URLSearchParams(location.search).get('m') ?? 'wall,wall-corner,wall-pillar,wall-half,wall-doorway').split(',');
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(innerWidth, innerHeight); document.body.appendChild(r.domElement);
+const s = new THREE.Scene(); s.background = new THREE.Color(0x30343c);
+s.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2.5));
+const d = new THREE.DirectionalLight(0xffffff, 2); d.position.set(3, 10, 6); s.add(d);
+const h = names.length * 2;
+const cam = new THREE.OrthographicCamera(-1, 8, 1, -h, 0.1, 100);
+cam.position.set(0, 20, 0); cam.lookAt(0, 0, 0); cam.up.set(0, 0, -1);
+// top-down view: +x right, +z down (south), north (-z) up
+cam.position.set(3.5, 20, h / 2 - 1); cam.lookAt(3.5, 0, h / 2 - 1);
+const aspect = innerWidth / innerHeight; const vh = h + 1;
+Object.assign(cam, { left: -vh * aspect / 2, right: vh * aspect / 2, top: vh / 2, bottom: -vh / 2 }); cam.updateProjectionMatrix();
+const loader = new GLTFLoader();
+const north = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.8, 8), new THREE.MeshBasicMaterial({ color: 0xff3030 }));
+north.rotation.x = -Math.PI / 2; north.position.set(-0.8, 0, -1); s.add(north);
+for (const [row, n] of names.entries()) {
+  const g = await loader.loadAsync(`/models/kenney/${n}.glb`);
+  for (let k = 0; k < 4; k++) {
+    const o = g.scene.clone(); o.rotation.y = k * Math.PI / 2; o.position.set(k * 2, 0, row * 2); s.add(o);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x556070 }));
+    ground.rotation.x = -Math.PI / 2; ground.position.set(k * 2, -0.01, row * 2); s.add(ground);
+  }
+}
+r.setAnimationLoop(() => r.render(s, cam));
+</script>
+</body></html>
