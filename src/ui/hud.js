@@ -64,7 +64,7 @@ export class Hud {
 
     // Help + toasts
     this.el.append(h('div', 'help',
-      '<kbd>B</kbd> build wall &nbsp; <kbd>LMB</kbd> place / select &nbsp; drag to paint<br>'
+      '<kbd>B</kbd> build wall &nbsp; <kbd>LMB</kbd> place / select &nbsp; drag for a line<br>'
       + '<kbd>RMB</kbd> cancel &nbsp; <kbd>RMB</kbd> drag / <kbd>WASD</kbd> pan &nbsp; <kbd>Wheel</kbd> zoom<br>'
       + '<kbd>Del</kbd> sell selected &nbsp; <kbd>Esc</kbd> cancel'));
     this.toasts = h('div', 'toasts');
@@ -81,12 +81,20 @@ export class Hud {
   onSell(fn) { this.handlers.sell = fn; }
 
   setMode(mode) {
+    this.currentMode = mode;
     for (const [key, el] of Object.entries(this.cardEls)) {
       el.classList.toggle('active', mode.kind === 'build' && mode.wallType === key);
     }
     this.modeEl.innerHTML = mode.kind === 'build'
-      ? `Building <b>${this.wallTypes[mode.wallType].name}</b> — click or drag to place, right-click to stop`
+      ? `Building <b>${this.wallTypes[mode.wallType].name}</b> — click to place, drag for a line, right-click to stop`
       : 'Select a wall to inspect it';
+  }
+
+  /** Summary of the line being placed, or null to restore the normal mode text. */
+  setPlan(plan) {
+    if (!plan) { this.setMode(this.currentMode); return; }
+    this.modeEl.innerHTML = `Release to build <b>${plan.count}</b> walls for <b>${plan.cost} gold</b>`
+      + (plan.blocked ? ` <span style="color:var(--red)">(${plan.blocked} blocked)</span>` : '');
   }
 
   showWall(wall) {

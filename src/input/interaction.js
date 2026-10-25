@@ -1,8 +1,13 @@
-// Mouse/keyboard interaction with the battlefield: hover, selection, wall placement
-// (click or drag to paint), right-drag panning and cancel. Listeners for presses are on
-// the canvas only, so clicks on HUD elements never reach the battlefield.
+// Mouse/keyboard interaction with the battlefield: hover, selection, wall placement,
+// right-drag panning and cancel. Listeners for presses are on the canvas only, so clicks
+// on HUD elements never reach the battlefield.
+//
+// Wall placement: press marks the start cell, dragging previews a straight line (locked
+// to the dominant axis), releasing builds it. Nothing is built until release, so hand
+// wobble during the drag cannot leave stray walls or corners behind.
 import * as THREE from 'three';
 import { pieceFor } from '../render/wallView.js';
+import { DIR } from '../core/walls.js';
 
 const REJECT_TEXT = {
   insufficient_gold: 'Not enough gold',
@@ -17,8 +22,8 @@ export class Interaction {
     this.mode = { kind: 'select' };
     this.selectedWallId = 0;
     this.hoverCell = null;
-    this.painting = null; // { last: cell, rejectedGold: bool }
-    this.drag = null; // { x, y, moved, button }
+    this.placing = null; // { anchor: cell, end: cell } while the left button is held in build mode
+    this.drag = null; // { x, y, moved, button } for right/middle-drag panning
     this.raycaster = new THREE.Raycaster();
     this.#bind();
     events.on('wallRemoved', ({ wall }) => {
@@ -41,21 +46,23 @@ export class Interaction {
   enterBuild(wallType) {
     this.select(0);
     this.mode = { kind: 'build', wallType };
+    this.placing = null;
     this.overlay.setGridVisible(true);
     this.hud.setMode(this.mode);
     this.#refreshHover();
   }
 
   cancel() {
-    if (this.mode.kind === 'build') {
+    if (this.placing) {
+      this.placing = null; // abort the current line, stay in build mode
+    } else if (this.mode.kind === 'build') {
       this.mode = { kind: 'select' };
       this.overlay.setGridVisible(false);
-      this.overlay.setGhost(null, null);
       this.hud.setMode(this.mode);
-      this.#refreshHover();
     } else {
       this.select(0);
     }
+    this.#refreshHover();
   }
 
   select(wallId) {
@@ -88,6 +95,41 @@ export class Interaction {
     return null;
   }
 
+  // --- placement planning ----------------------------------------------
+  /**
+   * Cells the current placement would build, each with validity. Gold is checked
+   * cumulatively, so cells beyond what the player can afford show as invalid.
+   */
+  plan() {
+    if (this.mode.kind !== 'build') return [];
+    const start = this.placing?.anchor ?? this.hoverCell;
+    if (!start) return [];
+    const end = this.placing ? axisLock(start, this.placing.end) : start;
+    const cost = this.walls.types[this.mode.wallType].cost;
+    let gold = this.walls.economy.gold;
+    return lineCells(start, end).map((cell) => {
+      const check = this.walls.canBuild(this.mode.wallType, cell.x, cell.y);
+      let reason = check.ok ? null : check.reason;
+      if (!reason && gold < cost) reason = 'insufficient_gold';
+      if (!reason) gold -= cost;
+      return { cell, valid: !reason, reason };
+    });
+  }
+
+  #commitPlacement() {
+    const plan = this.plan();
+    this.placing = null;
+    let built = 0;
+    for (const p of plan) if (p.valid && this.walls.build(this.mode.wallType, p.cell.x, p.cell.y)) built++;
+    const firstFail = plan.find((p) => !p.valid);
+    // A single click explains its failure; a line only reports running out of gold.
+    if (firstFail && (plan.length === 1 || firstFail.reason === 'insufficient_gold')) {
+      this.hud.toast(REJECT_TEXT[firstFail.reason] ?? 'Cannot build');
+    }
+    this.#refreshHover();
+    return built;
+  }
+
   // --- pointer ---------------------------------------------------------
   #onDown(e) {
     if (e.button === 1 || e.button === 2) {
@@ -97,8 +139,9 @@ export class Interaction {
     if (e.button !== 0) return;
     if (this.mode.kind === 'build') {
       const cell = this.cellAt(e.clientX, e.clientY);
-      this.painting = { last: cell, rejectedGold: false };
-      if (cell) this.#tryBuild(cell, true);
+      if (!cell) return;
+      this.placing = { anchor: cell, end: cell };
+      this.#refreshHover();
     } else {
       const w = this.wallAt(e.clientX, e.clientY);
       this.select(w ? w.id : 0);
@@ -121,11 +164,7 @@ export class Interaction {
     }
     const cell = this.cellAt(e.clientX, e.clientY);
     this.lastPointer = { x: e.clientX, y: e.clientY };
-    if (this.painting && cell) {
-      // Fill every cell between the previous and current cell so fast drags leave no gaps.
-      for (const c of lineCells(this.painting.last ?? cell, cell)) this.#tryBuild(c, false);
-      this.painting.last = cell;
-    }
+    if (this.placing && cell) this.placing.end = cell;
     if (cell?.x !== this.hoverCell?.x || cell?.y !== this.hoverCell?.y || this.mode.kind === 'select') {
       this.hoverCell = cell;
       this.#refreshHover();
@@ -133,7 +172,7 @@ export class Interaction {
   }
 
   #onUp(e) {
-    if (e.button === 0) this.painting = null;
+    if (e.button === 0 && this.placing) this.#commitPlacement();
     if (this.drag && e.button === this.drag.button) {
       if (!this.drag.moved && this.drag.button === 2) this.cancel();
       this.drag = null;
@@ -149,37 +188,43 @@ export class Interaction {
     }
   }
 
-  #tryBuild(cell, isClick) {
-    const type = this.mode.wallType;
-    const check = this.walls.canBuild(type, cell.x, cell.y);
-    if (check.ok) {
-      this.walls.build(type, cell.x, cell.y);
-      return;
-    }
-    // Clicks explain every failure; drags only mention running out of gold, once.
-    if (isClick || (check.reason === 'insufficient_gold' && !this.painting?.rejectedGold)) {
-      this.hud.toast(REJECT_TEXT[check.reason] ?? 'Cannot build');
-      if (check.reason === 'insufficient_gold' && this.painting) this.painting.rejectedGold = true;
-    }
-  }
-
   #refreshHover() {
     const cell = this.hoverCell;
     if (this.mode.kind === 'build') {
       this.overlay.setHover(null);
-      if (!cell) { this.overlay.setGhost(null, null); return; }
-      const valid = this.walls.canBuild(this.mode.wallType, cell.x, cell.y).ok;
-      // Preview the piece this cell would get given its current neighbours.
-      const [model, rot] = pieceFor(this.walls.connectionMask(cell.x, cell.y));
-      this.overlay.setGhost(model, cell, valid, rot);
-      this.canvas.style.cursor = valid ? 'crosshair' : 'not-allowed';
+      const plan = this.plan();
+      // Pick each ghost's piece as if the planned walls already existed, so the preview
+      // shows the corners and straights the line will really get.
+      const planned = new Set(plan.map((p) => `${p.cell.x},${p.cell.y}`));
+      const g = this.walls.grid;
+      const has = (x, y) => g.wallAt(x, y) || planned.has(`${x},${y}`);
+      this.overlay.setGhosts(plan.map(({ cell: c, valid }) => {
+        const mask = (has(c.x, c.y - 1) ? DIR.N : 0) | (has(c.x + 1, c.y) ? DIR.E : 0)
+          | (has(c.x, c.y + 1) ? DIR.S : 0) | (has(c.x - 1, c.y) ? DIR.W : 0);
+        const [model, rot] = pieceFor(mask);
+        return { cell: c, model, rot, valid };
+      }));
+      const ok = plan.filter((p) => p.valid).length;
+      this.hud.setPlan(this.placing && plan.length > 1
+        ? { count: ok, cost: ok * this.walls.types[this.mode.wallType].cost, blocked: plan.length - ok }
+        : null);
+      this.canvas.style.cursor = plan.length && plan.every((p) => !p.valid) ? 'not-allowed' : 'crosshair';
     } else {
+      this.overlay.setGhosts([]);
+      this.hud.setPlan(null);
       const p = this.lastPointer;
       const w = cell && p ? this.wallAt(p.x, p.y) : null;
       this.overlay.setHover(w ? { x: w.x, y: w.y } : cell);
       this.canvas.style.cursor = w ? 'pointer' : 'default';
     }
   }
+}
+
+/** Projects `cell` onto the horizontal or vertical line through `anchor`, whichever is closer. */
+export function axisLock(anchor, cell) {
+  return Math.abs(cell.x - anchor.x) >= Math.abs(cell.y - anchor.y)
+    ? { x: cell.x, y: anchor.y }
+    : { x: anchor.x, y: cell.y };
 }
 
 /**

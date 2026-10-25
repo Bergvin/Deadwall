@@ -33,8 +33,8 @@ export class Overlay {
     this.root.add(this.hover, this.selection);
     this.hover.visible = this.selection.visible = false;
 
-    this.ghosts = { valid: null, invalid: null };
-    this.ghost = null;
+    /** model:valid -> pooled ghost objects */
+    this.ghosts = {};
 
     const pathGeom = new THREE.BufferGeometry();
     pathGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3 * 1024), 3));
@@ -113,22 +113,29 @@ export class Overlay {
     if (cell) this.selection.position.set(cell.x + 0.5, 0.725, cell.y + 0.5);
   }
 
-  /** Shows the placement ghost at `cell` (or hides it when cell is null). */
-  setGhost(modelName, cell, valid, rotY = 0) {
-    if (!cell) {
-      if (this.ghost) this.ghost.visible = false;
-      return;
+  /**
+   * Shows placement ghosts; pass [] to hide them all. Ghost objects are pooled per
+   * model and validity, so dragging a long line does not allocate every frame.
+   * @param {{cell:{x:number,y:number}, model:string, rot:number, valid:boolean}[]} items
+   */
+  setGhosts(items) {
+    const used = {};
+    for (const { cell, model, rot, valid } of items) {
+      const key = `${model}:${valid}`;
+      const pool = (this.ghosts[key] ??= []);
+      const i = (used[key] = (used[key] ?? 0) + 1) - 1;
+      if (!pool[i]) {
+        pool[i] = this.#makeGhost(model, valid ? COLORS.valid : COLORS.invalid);
+        this.root.add(pool[i]);
+      }
+      const g = pool[i];
+      g.visible = true;
+      g.position.set(cell.x + 0.5, 0, cell.y + 0.5);
+      g.rotation.y = rot;
     }
-    const key = `${modelName}:${valid}`;
-    if (!this.ghosts[key]) {
-      this.ghosts[key] = this.#makeGhost(modelName, valid ? COLORS.valid : COLORS.invalid);
-      this.root.add(this.ghosts[key]);
+    for (const [key, pool] of Object.entries(this.ghosts)) {
+      for (let i = used[key] ?? 0; i < pool.length; i++) pool[i].visible = false;
     }
-    if (this.ghost && this.ghost !== this.ghosts[key]) this.ghost.visible = false;
-    this.ghost = this.ghosts[key];
-    this.ghost.visible = true;
-    this.ghost.position.set(cell.x + 0.5, 0, cell.y + 0.5);
-    this.ghost.rotation.y = rotY;
   }
 
   /** Draws a path of cells as a dashed line (null hides it). */

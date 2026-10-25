@@ -27,3 +27,11 @@ test('pieceFor picks straight, corner and junction pieces', () => {
   assert.equal(new Set(corners.map(([, r]) => r)).size, 4, 'each corner has its own rotation');
   assert.equal(pieceFor(DIR.N | DIR.E | DIR.S)[0], 'towerBase');
 });
+
+test('axisLock keeps drags on the dominant axis', async () => {
+  const { axisLock } = await import('../src/input/interaction.js');
+  const a = { x: 10, y: 10 };
+  assert.deepEqual(axisLock(a, { x: 4, y: 12 }), { x: 4, y: 10 }, 'mostly left -> horizontal');
+  assert.deepEqual(axisLock(a, { x: 11, y: 3 }), { x: 10, y: 3 }, 'mostly up -> vertical');
+  assert.deepEqual(axisLock(a, { x: 10, y: 10 }), a);
+});
