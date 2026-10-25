@@ -1,4 +1,5 @@
-// Wall placement, ownership of wall state, selling and neighbour connectivity.
+// Wall placement, ownership of wall state, damage/repair, selling, breaches and
+// neighbour connectivity.
 import { TERRAIN } from './grid.js';
 
 /** Connection bits for neighbour masks. */
@@ -7,13 +8,15 @@ export const DIR = { N: 1, E: 2, S: 4, W: 8 };
 export class WallSystem {
   #walls = new Map();
   #nextId = 1;
+  /** Cells whose wall was destroyed in combat and not rebuilt yet ("x,y"). */
+  #breaches = new Set();
 
   /**
    * @param {import('./grid.js').Grid} grid
    * @param {import('./economy.js').Economy} economy
    * @param {Record<string, object>} types  wall type configs (config/game.js WALLS)
    * @param {import('./events.js').Emitter} events
-   * @param {{sellRefund:number}} economyConfig
+   * @param {{sellRefund:number, repairCostFactor?:number}} economyConfig
    */
   constructor(grid, economy, types, events, economyConfig) {
     this.grid = grid;
@@ -21,6 +24,10 @@ export class WallSystem {
     this.types = types;
     this.events = events;
     this.economyConfig = economyConfig;
+    /** Multiplier applied to build and repair prices (e.g. during combat). */
+    this.priceMultiplier = () => 1;
+    /** Extra placement blocker, e.g. enemies standing in the cell. Returns a reason or null. */
+    this.placementBlocker = () => null;
   }
 
   get(id) {
@@ -39,6 +46,14 @@ export class WallSystem {
     return this.#walls.size;
   }
 
+  get breachCount() {
+    return this.#breaches.size;
+  }
+
+  costOf(typeKey) {
+    return Math.ceil(this.types[typeKey].cost * this.priceMultiplier());
+  }
+
   /** @returns {{ok: true} | {ok: false, reason: string}} */
   canBuild(typeKey, x, y) {
     const type = this.types[typeKey];
@@ -46,7 +61,9 @@ export class WallSystem {
     if (!this.grid.inBounds(x, y)) return { ok: false, reason: 'out_of_bounds' };
     if (this.grid.terrainAt(x, y) !== TERRAIN.OPEN) return { ok: false, reason: 'not_buildable' };
     if (this.grid.wallAt(x, y)) return { ok: false, reason: 'occupied' };
-    if (!this.economy.canAfford(type.cost)) return { ok: false, reason: 'insufficient_gold' };
+    const blocked = this.placementBlocker(x, y);
+    if (blocked) return { ok: false, reason: blocked };
+    if (!this.economy.canAfford(this.costOf(typeKey))) return { ok: false, reason: 'insufficient_gold' };
     return { ok: true };
   }
 
@@ -58,7 +75,8 @@ export class WallSystem {
       return null;
     }
     const type = this.types[typeKey];
-    if (!this.economy.trySpend(type.cost, `build:${typeKey}`)) return null;
+    const price = this.costOf(typeKey);
+    if (!this.economy.trySpend(price, `build:${typeKey}`)) return null;
     const wall = {
       id: this.#nextId++,
       type: typeKey,
@@ -66,14 +84,48 @@ export class WallSystem {
       hp: type.maxHp,
       maxHp: type.maxHp,
       level: 1,
+      // Refunds are based on the base cost, never on combat surcharges.
       invested: type.cost,
       heroCapacity: type.heroCapacity,
       heroes: [],
     };
     this.#walls.set(wall.id, wall);
     this.grid.wallId[this.grid.index(x, y)] = wall.id;
+    this.#breaches.delete(`${x},${y}`);
     this.events.emit('wallAdded', wall);
     return wall;
+  }
+
+  /** Applies damage; destroys the wall at 0 HP. Returns the damage actually dealt. */
+  damage(id, amount, source = null) {
+    const w = this.get(id);
+    if (!w || !(amount > 0)) return 0;
+    const dealt = Math.min(w.hp, amount);
+    w.hp -= dealt;
+    this.events.emit('wallDamaged', { wall: w, amount: dealt, source });
+    if (w.hp <= 0) this.destroy(id);
+    return dealt;
+  }
+
+  repairCost(id) {
+    const w = this.get(id);
+    if (!w || w.hp >= w.maxHp) return 0;
+    const missing = (w.maxHp - w.hp) / w.maxHp;
+    return Math.max(1, Math.ceil(missing * w.invested * this.economyConfig.repairCostFactor * this.priceMultiplier()));
+  }
+
+  /** Restores the wall to full health if affordable. Never exceeds max HP. */
+  repair(id) {
+    const w = this.get(id);
+    const cost = this.repairCost(id);
+    if (!w || cost === 0) return false;
+    if (!this.economy.trySpend(cost, `repair:${w.type}`)) {
+      this.events.emit('actionRejected', { action: 'repair', reason: 'insufficient_gold' });
+      return false;
+    }
+    w.hp = w.maxHp;
+    this.events.emit('wallRepaired', { wall: w, cost });
+    return true;
   }
 
   /** Gold returned when selling: refund fraction of what was invested, scaled by health. */
@@ -92,10 +144,12 @@ export class WallSystem {
     return true;
   }
 
-  /** Removes a wall that was destroyed in combat (no refund). */
+  /** Removes a wall that was destroyed in combat (no refund) and records a breach. */
   destroy(id) {
     const w = this.get(id);
     if (!w) return false;
+    w.hp = 0;
+    this.#breaches.add(`${w.x},${w.y}`);
     this.#remove(w, 'destroyed');
     return true;
   }
@@ -113,11 +167,6 @@ export class WallSystem {
       | (g.wallAt(x + 1, y) ? DIR.E : 0)
       | (g.wallAt(x, y + 1) ? DIR.S : 0)
       | (g.wallAt(x - 1, y) ? DIR.W : 0);
-  }
-
-  clear() {
-    for (const w of [...this.#walls.values()]) this.#remove(w, 'reset');
-    this.#nextId = 1;
   }
 }
 

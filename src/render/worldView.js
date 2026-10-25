@@ -42,10 +42,11 @@ export function buildWorld(scene, assets, grid, map) {
   const row = map.castleWallRow;
   const z = row + 0.5;
   const gx = map.gateX;
+  let gate = null;
   for (let x = 0; x < map.width; x++) {
     const cx = x + 0.5;
     if (x === gx) {
-      place('gateDoor', cx, z, 0, 0, 1);
+      gate = place('gateDoor', cx, z, 0, 0, 1);
       continue;
     }
     const isTower = x === 0 || x === map.width - 1 || x === gx - 1 || x === gx + 1 || (x % 6 === 3);
@@ -101,7 +102,7 @@ export function buildWorld(scene, assets, grid, map) {
     const model = rand() < 0.7 ? 'pineCrooked' : (rand() < 0.5 ? 'trunk' : 'gravestone');
     place(model, x, zz, rand() * Math.PI * 2, 0, 0.9 + rand() * 0.6);
   }
-  return root;
+  return { root, gate };
 }
 
 /** Small deterministic PRNG so the decoration layout is the same every run. */

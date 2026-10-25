@@ -63,7 +63,7 @@ Kenney GLB files may reference `Textures/` next to them, so copy that folder alo
 |---|---|---|
 | 0 | Spike: Vite + Three.js, load models, fps test with 200 animated zombies | done |
 | 1 | Grid, isometric camera (pan/zoom), mouse picking, stone wall construction, A* | done |
-| 2 | Full game loop: Walker, Archer, gold, waves, breaches, gate, game over, pause/speed, restart | |
+| 2 | Full game loop: Walker, Archer, gold, waves, breaches, gate, game over, pause/speed, restart | done |
 | 3 | All 6 heroes, abilities, XP, and upgrades | |
 | 4 | All 5 wall types, all zombie types, and bosses | |
 | 5 | Effects, audio, UI polish, localStorage, atmosphere (fog, light) | |
@@ -73,12 +73,15 @@ Each phase ends with: the user plays and gives feedback, then commit and push to
 
 ## Code layout
 
-- `src/config/`: `game.js` (all gameplay numbers: MAP, ECONOMY, WALLS, PATHING, CAMERA) and `assets.js` (model registry).
-- `src/core/`: pure logic with no Three.js, tested in Node. `grid.js` (terrain, cell→wall id), `walls.js` (WallSystem: build/sell/destroy, connection masks, `zombieCostFn`), `economy.js`, `pathfinding.js` (A* `findPath` + Dijkstra `computeFlowField`, 8-dir, no corner cutting), `loop.js` (fixed-timestep loop, speed/pause), `events.js`.
+- `src/config/`: `game.js` (all gameplay numbers: MAP, ECONOMY, FORTRESS, ZOMBIES, HEROES, HERO_RULES, WAVES, SCORE, WALLS, PATHING, CAMERA) and `assets.js` (model registry).
+- `src/core/simulation.js`: **one run of the whole game logic** (no rendering). Owns grid, economy, walls, fortress, zombies, heroes, projectiles, waves, seeded rng, stats; `step(dt)`, `run(seconds)`, `summary()`. Same seed + same actions = same outcome.
+- `src/core/`: pure logic with no Three.js, tested in Node. `zombies.js` (shared flow field to the gate; MOVE / ATTACK_WALL / ATTACK_GATE / DEAD; `damage()` kills exactly once), `heroes.js` (recruit, deploy with capacity, reposition delay, dismiss refund, targeting = closest to gate by path, XP split by damage), `projectiles.js` (homing, one hit each), `waves.js` (PREP countdown / ACTIVE spawning, `startNext()` only in PREP), `fortress.js` (gate HP, `gateDestroyed`), `save.js` (validated localStorage records), `rng.js`. `grid.js` (terrain, cell→wall id), `walls.js` (WallSystem: build/sell/destroy, connection masks, `zombieCostFn`), `economy.js`, `pathfinding.js` (A* `findPath` + Dijkstra `computeFlowField`, 8-dir, no corner cutting), `loop.js` (fixed-timestep loop, speed/pause), `events.js`.
 - `src/render/`: `setup.js` (renderer/lights/ground), `cameraController.js`, `assets.js` (AssetLibrary), `wallView.js` (`pieceFor(mask)` picks the piece and rotation), `worldView.js` (castle + scenery), `overlay.js` (grid, hover, ghost, path line), `bakedHorde.js`.
 - `src/input/interaction.js`: modes (select/build), picking, wall placement (press = start, drag = axis-locked line preview with cumulative gold check, release = build; `axisLock` + 4-connected `lineCells`), right-drag pan, keys.
 - `src/ui/hud.js` + `hud.css`: HTML HUD. Canvas-only pointerdown listeners keep UI clicks off the battlefield.
-- `src/game/game.js`: composition root. `src/main.js`: bootstrap + `window.debug`.
+- `src/game/game.js`: state machine (menu → playing → over) and everything that persists between runs (renderer, camera, assets, scenery, overlay, ZombieView, ProjectileView, Effects, HealthBars, FloatingText). `src/game/session.js`: one run = Simulation + WallView + HeroView + Interaction + Hud + event→feedback wiring; `dispose()` removes every trace (restart is a new Session).
+- Render: `zombieView.js` (baked horde per model; clips Walk/Punch/Death), `heroView.js` (skinned heroes on walkway y 1.18 + invisible pick hit boxes), `projectileView.js`, `effects.js` (particle bursts), `healthBars.js` (instanced camera-facing bars). `ui/screens.js` (menu, game over, pause badge), `ui/floatingText.js` (pooled DOM damage numbers).
+- `src/main.js`: bootstrap + `window.debug`.
 - Grid coords: cell (x, y), y grows south, north = y 0. Cell center in world = (x + 0.5, 0, y + 0.5). Castle wall row 21, gate (15, 21), spawn rows 0–2.
 - Zombie routing: walls are passable at a cost (`PATHING`), so zombies go around short walls but break through a closed line at its cheapest point.
 
@@ -99,6 +102,7 @@ Each phase ends with: the user plays and gives feedback, then commit and push to
 - `npm run build` writes the production build to `dist/`.
 - `npm test` runs the Node tests in `tests/*.test.js` (logic only, no browser).
 - `node tools/inspect-model.cjs <file.gltf|glb>…` prints meshes, skins, textures and animation names without dumping binary data.
-- In the browser console: `debug.state()`, `debug.build(x, y)`, `debug.buildLine(x0, y0, x1, y1)`, `debug.sellAt(x, y)`, `debug.addGold(n)`, `debug.screenOf(x, y, h)` (cell → client pixel, for simulated clicks), `debug.cellAt(cx, cy)`.
+- `node tools/simulate.js [runs] [line|none]` plays headless runs with a scripted strategy and prints the wave reached (balance check; phase 2 baseline: line strategy ≈ wave 20, no defence = wave 1).
+- In the browser console: `debug.state()`, `debug.newGame(seed)`, `debug.sim()`, `debug.build(x, y)`, `debug.buildLine(x0, y0, x1, y1)`, `debug.sellAt(x, y)`, `debug.addGold(n)`, `debug.spawn(type, x, y, n)`, `debug.hero(type, x, y)` (recruit + deploy), `debug.damageWall(x, y, n)`, `debug.damageGate(n)`, `debug.fastForward(seconds)`, `debug.screenOf(x, y, h)` (cell → client pixel, for simulated clicks), `debug.cellAt(cx, cy)`. Note: the menu is shown first; start a run before using run commands.
 - `/tools/viewer/pieces.html?m=wall,wall-corner` shows Kenney pieces top-down at 0/90/180/270° (north up) to check orientation.
-- Controls: `B` build stone wall, LMB place/select (drag previews a straight line, release builds it), RMB cancel, RMB-drag or WASD pan, wheel zoom (anchored at the cursor), Del sell selected, Esc cancel, `P` toggle the zombie path preview.
+- Controls: `B` build stone wall, LMB place/select (drag previews a straight line, release builds it), RMB cancel, RMB-drag or WASD pan, wheel zoom (anchored at the cursor), `R` repair / Del sell selected wall, `M` move selected hero, Space pause, Enter start next wave, Esc cancel, `P` toggle the zombie path preview. Heroes tab → recruit → click a wall (green ring = free slot).

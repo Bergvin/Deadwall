@@ -6,6 +6,8 @@ import { DIR } from '../core/walls.js';
 const R90 = Math.PI / 2;
 // Wall walkway top, measured with a downward raycast on wall.glb.
 const WALKWAY_HEIGHT = 1.18;
+/** Seconds a wall shakes after being hit. */
+const SHAKE_TIME = 0.15;
 
 /**
  * Picks [modelName, rotationY, scaleY] for a connection mask.
@@ -122,11 +124,25 @@ export class WallView {
       this.#drop(wall.id);
       this.#refreshAround(wall.x, wall.y);
     });
+    events.on('wallDamaged', ({ wall }) => {
+      const node = this.#nodes.get(wall.id);
+      if (!node) return;
+      this.#applyWear(node, wall);
+      node.userData.shake = SHAKE_TIME;
+    });
+    events.on('wallRepaired', ({ wall }) => {
+      const node = this.#nodes.get(wall.id);
+      if (node) this.#applyWear(node, wall);
+    });
   }
 
   /** Meshes to raycast against for picking. Each piece has userData.wallId. */
   get pickables() {
     return this.group.children;
+  }
+
+  node(id) {
+    return this.#nodes.get(id) ?? null;
   }
 
   #refreshAround(x, y) {
@@ -145,15 +161,54 @@ export class WallView {
     node.position.set(wall.x + 0.5, 0, wall.y + 0.5);
     node.rotation.y = rot;
     node.scale.y *= scaleY;
-    node.userData = { wallId: wall.id, model };
+    node.userData = { wallId: wall.id, model, shake: 0, worn: null };
     this.group.add(node);
     this.#nodes.set(wall.id, node);
+    if (wall.hp < wall.maxHp) this.#applyWear(node, wall);
+  }
+
+  /**
+   * Progressive deterioration: the piece darkens toward scorched stone as it loses health.
+   * Materials are cloned per damaged wall on first use so other walls are unaffected.
+   */
+  #applyWear(node, wall) {
+    const ratio = wall.hp / wall.maxHp;
+    if (!node.userData.worn) {
+      if (ratio >= 1) return;
+      node.userData.worn = [];
+      node.traverse((o) => {
+        if (!o.isMesh) return;
+        o.material = o.material.clone();
+        node.userData.worn.push(o.material);
+      });
+    }
+    const k = 1 - ratio;
+    for (const m of node.userData.worn) m.color.setRGB(1 - 0.55 * k, 1 - 0.62 * k, 1 - 0.66 * k);
+  }
+
+  /** Hit shake; call every frame with real dt. */
+  update(dt) {
+    for (const node of this.#nodes.values()) {
+      const u = node.userData;
+      if (u.shake <= 0) continue;
+      u.shake = Math.max(0, u.shake - dt);
+      const w = this.walls.get(u.wallId);
+      const a = u.shake > 0 ? 0.04 * (u.shake / SHAKE_TIME) : 0;
+      node.position.x = w.x + 0.5 + (Math.random() - 0.5) * a;
+      node.position.z = w.y + 0.5 + (Math.random() - 0.5) * a;
+    }
   }
 
   #drop(id) {
     const node = this.#nodes.get(id);
     if (!node) return;
     this.group.remove(node);
+    for (const m of node.userData.worn ?? []) m.dispose();
     this.#nodes.delete(id);
+  }
+
+  dispose() {
+    for (const id of [...this.#nodes.keys()]) this.#drop(id);
+    this.group.parent?.remove(this.group);
   }
 }

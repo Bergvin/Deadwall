@@ -1,30 +1,33 @@
-// Composition root: creates systems, views, UI and input, and runs the loop.
+// Composition root and state machine (menu -> playing -> game over). Owns everything that
+// persists between runs (renderer, camera, models, scenery, shared renderers) and creates
+// a fresh Session for every run.
 import * as THREE from 'three';
-import { MAP, ECONOMY, WALLS, PATHING, CAMERA } from '../config/game.js';
+import { MAP, CAMERA, ZOMBIES } from '../config/game.js';
 import { MODELS } from '../config/assets.js';
-import { Emitter } from '../core/events.js';
-import { Economy } from '../core/economy.js';
 import { createMapGrid } from '../core/grid.js';
-import { WallSystem, zombieCostFn } from '../core/walls.js';
-import { findPath } from '../core/pathfinding.js';
 import { GameLoop } from '../core/loop.js';
+import { loadSave, writeSave, recordRun } from '../core/save.js';
 import { createStage } from '../render/setup.js';
 import { CameraController } from '../render/cameraController.js';
 import { AssetLibrary } from '../render/assets.js';
-import { WallView } from '../render/wallView.js';
 import { buildWorld } from '../render/worldView.js';
 import { Overlay } from '../render/overlay.js';
-import { Interaction } from '../input/interaction.js';
-import { Hud } from '../ui/hud.js';
+import { ZombieView } from '../render/zombieView.js';
+import { ProjectileView } from '../render/projectileView.js';
+import { Effects } from '../render/effects.js';
+import { HealthBars } from '../render/healthBars.js';
+import { FloatingText } from '../ui/floatingText.js';
+import { Screens } from '../ui/screens.js';
+import { Session } from './session.js';
+
+export const STATE = { MENU: 'menu', PLAYING: 'playing', OVER: 'over' };
 
 export class Game {
   /** @param {HTMLElement} container */
   async init(container) {
-    this.events = new Emitter();
-    this.grid = createMapGrid(MAP);
-    this.economy = new Economy(ECONOMY.startingGold, this.events);
-    this.walls = new WallSystem(this.grid, this.economy, WALLS, this.events, ECONOMY);
-
+    this.container = container;
+    this.state = STATE.MENU;
+    this.save = loadSave();
     const { renderer, scene, center } = createStage(container, MAP, CAMERA.distance);
     this.renderer = renderer;
     this.scene = scene;
@@ -32,59 +35,92 @@ export class Game {
       { minX: 0, maxX: MAP.width, minZ: 2, maxZ: MAP.height }, new THREE.Vector3(center.x, 0, center.z + 1));
 
     this.assets = new AssetLibrary();
-    // Characters are not needed until phase 2.
-    await this.assets.load(MODELS, Object.keys(MODELS).filter((k) => !['archer', 'walker'].includes(k)));
-    buildWorld(scene, this.assets, this.grid, MAP);
-    this.wallView = new WallView(scene, this.assets, this.walls, this.events);
-    this.overlay = new Overlay(scene, this.grid, this.assets);
+    await this.assets.load(MODELS);
+    // Scenery only depends on the static map layout, so it is built once.
+    const layout = createMapGrid(MAP);
+    const world = buildWorld(scene, this.assets, layout, MAP);
+    this.overlay = new Overlay(scene, layout, this.assets);
+    this.zombieView = new ZombieView(scene, this.assets, ZOMBIES);
+    this.projectileView = new ProjectileView(scene);
+    this.effects = new Effects(scene);
+    this.bars = new HealthBars(scene);
+    this.floaters = new FloatingText(document.body);
+    this.gateNode = world.gate;
 
-    this.hud = new Hud(document.body, {
-      walls: this.walls, economy: this.economy, events: this.events, wallTypes: WALLS,
+    this.loop = new GameLoop({
+      onStep: (dt) => this.session?.sim.step(dt),
+      onFrame: (realDt) => this.frame(realDt),
     });
-    this.input = new Interaction({
-      canvas: renderer.domElement, cam: this.cam, walls: this.walls, wallView: this.wallView,
-      overlay: this.overlay, hud: this.hud, events: this.events, cameraCfg: CAMERA,
-    });
-    this.hud.onBuild((type) => this.input.enterBuild(type));
-    this.hud.onSell((id) => this.walls.sell(id));
-
-    // Zombie route preview (spawn -> gate), recomputed only when walls change.
-    this.showPath = true;
-    this.pathDirty = true;
-    this.events.on('wallAdded', () => { this.pathDirty = true; });
-    this.events.on('wallRemoved', () => { this.pathDirty = true; });
-    addEventListener('keydown', (e) => {
-      if (e.code === 'KeyP' && !e.repeat) { this.showPath = !this.showPath; this.pathDirty = true; }
+    this.screens = new Screens(document.body, {
+      onNewGame: () => this.newGame(),
+      onMenu: () => this.toMenu(),
     });
 
     addEventListener('resize', () => {
       renderer.setSize(container.clientWidth, container.clientHeight);
       this.cam.update(0);
     });
-
-    this.loop = new GameLoop({
-      onStep: (dt) => this.step(dt),
-      onFrame: (realDt) => this.frame(realDt),
+    // Pause automatically when the tab is hidden so a run is never lost in the background.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && this.state === STATE.PLAYING && !this.loop.paused) this.togglePause();
     });
+
+    this.toMenu();
     this.loop.start();
   }
 
-  /** Fixed-timestep simulation (combat, waves etc. arrive in phase 2). */
-  step(_dt) {}
+  #endSession() {
+    this.session?.dispose();
+    this.session = null;
+  }
+
+  newGame(seed) {
+    this.#endSession();
+    this.screens.hideMenu();
+    this.screens.hideGameOver();
+    this.loop.paused = false;
+    this.loop.speed = 1;
+    this.screens.setPaused(false);
+    this.session = new Session({
+      scene: this.scene, canvas: this.renderer.domElement, cam: this.cam, assets: this.assets,
+      overlay: this.overlay, zombieView: this.zombieView, projectileView: this.projectileView,
+      effects: this.effects, bars: this.bars, floaters: this.floaters, gateNode: this.gateNode,
+      loop: this.loop, seed, togglePause: () => this.togglePause(),
+      onGameOver: (summary) => this.gameOver(summary),
+    });
+    this.state = STATE.PLAYING;
+  }
+
+  toMenu() {
+    this.#endSession();
+    this.state = STATE.MENU;
+    this.loop.paused = false;
+    this.screens.setPaused(false);
+    this.screens.hideGameOver();
+    this.screens.showMenu(this.save);
+  }
+
+  gameOver(summary) {
+    if (this.state !== STATE.PLAYING) return;
+    this.state = STATE.OVER;
+    const rec = recordRun(this.save, summary);
+    this.save = rec.save;
+    writeSave(this.save);
+    // Let the final moments play out behind the screen, then freeze.
+    setTimeout(() => {
+      if (this.state === STATE.OVER) this.screens.showGameOver(summary, this.save, rec);
+    }, 1200);
+  }
+
+  togglePause() {
+    if (this.state !== STATE.PLAYING) return;
+    this.loop.paused = !this.loop.paused;
+    this.screens.setPaused(this.loop.paused);
+  }
 
   frame(realDt) {
     this.cam.update(realDt);
-    if (this.pathDirty) {
-      this.pathDirty = false;
-      this.currentPath = this.computeZombiePath();
-      this.overlay.setPath(this.showPath ? this.currentPath : null);
-    }
+    this.session?.frame(realDt);
     this.renderer.render(this.scene, this.cam.camera);
-  }
-
-  computeZombiePath() {
-    const cost = zombieCostFn(this.grid, this.walls, PATHING);
-    return findPath(this.grid, { x: MAP.gateX, y: 1 }, { x: MAP.gateX, y: MAP.castleWallRow },
-      { cost, isOpen: (x, y) => cost(x, y) === 1 });
   }
 }

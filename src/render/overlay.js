@@ -139,6 +139,38 @@ export class Overlay {
     }
   }
 
+  /** Hero-slot markers on wall tops while deploying. @param {{x,y,free:boolean}[]} items */
+  setHeroSlots(items) {
+    this.slots ??= [];
+    items.forEach((it, i) => {
+      if (!this.slots[i]) {
+        const m = new THREE.Mesh(
+          new THREE.RingGeometry(0.22, 0.32, 20),
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, depthTest: false }),
+        );
+        m.rotation.x = -Math.PI / 2;
+        m.renderOrder = 12;
+        this.root.add(m);
+        this.slots[i] = m;
+      }
+      const m = this.slots[i];
+      m.visible = true;
+      m.material.color.set(it.free ? COLORS.valid : COLORS.invalid);
+      m.position.set(it.x + 0.5, 1.22, it.y + 0.5);
+    });
+    for (let i = items.length; i < this.slots.length; i++) this.slots[i].visible = false;
+  }
+
+  /** Hides every transient marker (used when a run ends). */
+  reset() {
+    this.setGhosts([]);
+    this.setHeroSlots([]);
+    this.setHover(null);
+    this.setSelection(null);
+    this.setGridVisible(false);
+    this.setPath(null);
+  }
+
   /** Draws a path of cells as a dashed line (null hides it). */
   setPath(cells) {
     this.path.visible = !!cells;

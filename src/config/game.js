@@ -22,6 +22,92 @@ export const ECONOMY = {
   startingGold: 400,
   /** Fraction of the build cost returned when selling a wall, scaled by its health ratio. */
   sellRefund: 0.5,
+  /** Construction and repair cost multiplier while a wave is in progress. */
+  combatBuildMultiplier: 1.25,
+  /** Repair cost = missing HP fraction x build cost x this factor. */
+  repairCostFactor: 0.6,
+  /** Fraction of a hero's total investment returned on dismissal. */
+  heroRefund: 0.5,
+};
+
+export const FORTRESS = {
+  gateMaxHp: 1500,
+  /** Gate HP fraction below which the HUD warns that the fortress is in danger. */
+  warnAt: 0.35,
+};
+
+/**
+ * Zombie types. Speeds are cells per second; attackInterval is seconds between hits.
+ * reward is gold granted exactly once on death; xp is shared among heroes that hurt it.
+ */
+export const ZOMBIES = {
+  walker: {
+    name: 'Walker',
+    hp: 60,
+    armor: 0,
+    speed: 0.6,
+    wallDamage: 12,
+    attackInterval: 1.2,
+    reward: 4,
+    xp: 10,
+    model: 'walker',
+    tint: null,
+    scale: 1,
+  },
+};
+
+/**
+ * Hero classes. Phase 2 implements the Archer; the rest arrive in phase 3.
+ * range is in cells; attackInterval in seconds; projectileSpeed in cells per second.
+ */
+export const HEROES = {
+  archer: {
+    name: 'Archer',
+    role: 'Fast ranged damage',
+    description: 'Fast, long-ranged arrows. Strong vs Walkers and Runners, weak vs armor.',
+    cost: 80,
+    hp: 100,
+    damage: 14,
+    attackInterval: 0.75,
+    range: 6.5,
+    projectileSpeed: 16,
+    critChance: 0.1,
+    critMultiplier: 2,
+    model: 'archer',
+  },
+};
+
+export const HERO_RULES = {
+  /** Seconds a hero spends walking to a new wall when repositioned (cannot attack meanwhile). */
+  repositionTime: 3,
+  /** XP per point of damage dealt (kill XP is added on top). */
+  xpPerDamage: 0.2,
+  names: ['Aldric', 'Brienne', 'Cedric', 'Daria', 'Edmund', 'Freya', 'Garrick', 'Helena',
+    'Ivor', 'Johanna', 'Kendrick', 'Liora', 'Merek', 'Nessa', 'Osric', 'Rowena', 'Tobias', 'Wynn'],
+};
+
+export const WAVES = {
+  /** Seconds before wave 1 starts on its own (the player can start it earlier). */
+  firstPrepTime: 60,
+  /** Seconds of preparation between waves. */
+  prepTime: 25,
+  /** Walker count = base + perWave * (wave - 1). */
+  walkerBase: 8,
+  walkerPerWave: 4,
+  /** Enemy HP multiplier grows linearly per wave: 1 + hpGrowth * (wave - 1). */
+  hpGrowth: 0.12,
+  /** Seconds between spawns at wave 1, shrinking toward minSpawnInterval. */
+  spawnInterval: 1.1,
+  spawnIntervalDecay: 0.06,
+  minSpawnInterval: 0.25,
+  /** Gold for clearing a wave: base + perWave * wave. */
+  clearBonusBase: 30,
+  clearBonusPerWave: 10,
+};
+
+export const SCORE = {
+  perKillGold: 1, // score += reward gold of each kill x this
+  perWaveCleared: 250,
 };
 
 /** Wall types. Phase 1 has only Stone; the rest arrive in phase 4. */

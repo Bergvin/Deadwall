@@ -87,3 +87,59 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
   .help { display: none; }
   .buildbar { min-width: 0; }
 }
+
+/* --- phase 2: run HUD additions --- */
+.topbar { gap: 16px; }
+.stat.alert .value { color: var(--red); }
+.stat .bar.wide { width: 110px; margin: 0; }
+.controls { display: flex; gap: 6px; align-items: center; }
+.controls .btn { margin: 0; width: auto; padding: 5px 10px; }
+.btn.icon { min-width: 34px; }
+.btn.active { border-color: var(--gold); color: var(--gold); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn .k { opacity: 0.6; font-size: 11px; margin-left: 4px; }
+.wavebtn, .primary { background: rgba(120, 30, 24, 0.85); border-color: #a0443a; font-weight: 600; }
+.wavebtn:not(:disabled):hover, .primary:hover { background: rgba(150, 40, 30, 0.95); }
+.mode { flex: 1; text-align: right; }
+.panel .sub { color: var(--muted); font-size: 12px; margin: -4px 0 8px; }
+.card.hero { width: 170px; }
+.reserve { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 8px 8px; align-items: center; }
+.reserve[hidden] { display: none; }
+.reserve .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+.chip { font: inherit; font-size: 12px; padding: 3px 8px; border-radius: 12px; cursor: pointer; color: var(--text); background: var(--bg-raised); border: 1px solid var(--border-hi); }
+.chip span { color: var(--muted); }
+.chip:hover { border-color: var(--gold); }
+.toast.alert { background: rgba(110, 20, 16, 0.95); font-weight: 600; }
+.toast:not(.alert) { background: rgba(30, 28, 25, 0.95); border-color: var(--border-hi); }
+
+.banner { position: absolute; top: 28%; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; opacity: 0; }
+.banner .t { font-family: var(--font); font-size: 44px; font-weight: 700; letter-spacing: 3px; color: #e8d8b8; text-shadow: 0 0 18px rgba(200, 50, 30, 0.7); }
+.banner .s { color: var(--muted); font-size: 16px; margin-top: 4px; }
+.banner.show { animation: banner 2.4s ease-out forwards; }
+@keyframes banner { 0% { opacity: 0; transform: translate(-50%, 10px); } 12%, 70% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+
+.vignette { position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 160px rgba(180, 20, 10, 0.55); opacity: 0; transition: opacity 0.4s; }
+.vignette.on { opacity: 1; animation: pulse 1.6s infinite; }
+@keyframes pulse { 50% { opacity: 0.55; } }
+
+.floaters { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.floater { position: absolute; left: 0; top: 0; font-weight: 700; font-size: 13px; color: #f0e6d0; text-shadow: 0 1px 2px #000, 0 0 3px #000; white-space: nowrap; will-change: transform; }
+.floater.crit { color: #ffd23d; font-size: 17px; }
+.floater.gold { color: var(--gold); font-size: 12px; }
+.floater.wall { color: #ff8a70; font-size: 12px; }
+
+/* --- screens --- */
+.screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, rgba(20, 16, 14, 0.55), rgba(8, 6, 6, 0.92)); z-index: 10; }
+.screen[hidden] { display: none; }
+.screen .box { text-align: center; padding: 32px 40px; background: rgba(18, 16, 14, 0.9); border: 1px solid var(--border); border-radius: 8px; min-width: 340px; }
+.screen h1 { font-family: var(--font); font-size: 64px; letter-spacing: 8px; margin: 0; color: #d8c8a0; text-shadow: 0 0 24px rgba(200, 50, 30, 0.6); }
+.screen h1 span { color: var(--red); }
+.screen h2 { font-family: var(--font); font-size: 34px; margin: 0 0 8px; color: #e0b0a0; }
+.screen .tagline { color: var(--muted); margin: 6px 0 22px; }
+.screen .big { width: 220px; padding: 10px; font-size: 16px; margin: 6px auto 0; display: block; }
+.screen .records { display: grid; grid-template-columns: repeat(2, auto); gap: 4px 24px; justify-content: center; margin: 18px 0 6px; font-size: 13px; color: var(--muted); }
+.screen .records b { color: var(--text); }
+.screen .newrec { color: var(--gold); font-weight: 700; margin: 6px 0; }
+.screen .controlsHelp { color: var(--muted); font-size: 12px; margin-top: 18px; line-height: 1.7; }
+.pausebadge { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); font-family: var(--font); font-size: 22px; letter-spacing: 4px; color: var(--gold); background: var(--bg); border: 1px solid var(--border-hi); padding: 4px 18px; border-radius: 4px; pointer-events: none; }
+.pausebadge[hidden] { display: none; }
