@@ -35,8 +35,8 @@ export function buildWorld(scene, assets, grid, map) {
     m.receiveShadow = true;
     root.add(m);
   };
-  strip(0, map.spawnRows, PALETTE.groundSpawn, 0.9);
-  strip(map.castleWallRow, map.height, PALETTE.groundCastle, 1);
+  strip(0, map.spawnRows, PALETTE.groundSpawn, 0.55);
+  strip(map.castleWallRow, map.height, PALETTE.groundCastle, 0.7);
 
   // Castle wall: east-west wall with towers every 5 cells, two towers flanking the gate.
   const row = map.castleWallRow;
@@ -66,19 +66,33 @@ export function buildWorld(scene, assets, grid, map) {
     place('towerRoof', gx + 0.5 + dx, row + 0.5 + dz, 0, 2.02);
   }
 
-  // Braziers either side of the gate, outside the wall.
+  // Braziers either side of the gate, outside the wall, and torches along the castle wall.
+  // Their lights flicker and they emit embers (see ambience.js).
+  const lights = [], emitters = [];
   for (const dx of [-1, 1]) {
     const bx = gx + 0.5 + dx * 1.6;
     place('fireBasket', bx, row - 0.2);
     const light = new THREE.PointLight(PALETTE.torch, 8, 6, 1.6);
     light.position.set(bx, 1.2, row - 0.2);
     root.add(light);
+    lights.push(light);
+    emitters.push({ x: bx, y: 0.9, z: row - 0.2 }, { x: bx, y: 0.9, z: row - 0.2 });
   }
-  // Torches along the castle wall.
   for (let x = 3; x < map.width; x += 6) {
     const light = new THREE.PointLight(PALETTE.torch, 5, 5, 1.6);
     light.position.set(x + 0.5, 1.8, row - 0.1);
     root.add(light);
+    lights.push(light);
+    emitters.push({ x: x + 0.5, y: 1.6, z: row - 0.15 });
+  }
+  // Braziers just outside the battlefield edges light the flanks without blocking cells.
+  for (const [bx, bz] of [[-0.8, 8.5], [map.width + 0.8, 9.5], [-0.8, 16.5], [map.width + 0.8, 15.5]]) {
+    place('fireBasket', bx, bz, 0, 0, 0.8);
+    const light = new THREE.PointLight(PALETTE.torch, 4, 4.5, 1.6);
+    light.position.set(bx, 1, bz);
+    root.add(light);
+    lights.push(light);
+    emitters.push({ x: bx, y: 0.75, z: bz });
   }
 
   // Terrain obstacles: rocks on BLOCKED cells.
@@ -102,7 +116,7 @@ export function buildWorld(scene, assets, grid, map) {
     const model = rand() < 0.7 ? 'pineCrooked' : (rand() < 0.5 ? 'trunk' : 'gravestone');
     place(model, x, zz, rand() * Math.PI * 2, 0, 0.9 + rand() * 0.6);
   }
-  return { root, gate };
+  return { root, gate, lights, emitters };
 }
 
 /** Small deterministic PRNG so the decoration layout is the same every run. */

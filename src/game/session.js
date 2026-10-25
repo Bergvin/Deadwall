@@ -39,6 +39,8 @@ export class Session {
       setSpeed: (s) => { loop.speed = s; },
       isPaused: () => loop.paused,
       getSpeed: () => loop.speed,
+      toggleMute: () => shared.setSetting('muted', !shared.settings.muted),
+      isMuted: () => shared.settings.muted,
     });
     this.input = new Interaction({
       canvas, cam, sim, wallView: this.wallView, heroView: this.heroView, overlay,
@@ -52,12 +54,12 @@ export class Session {
 
     this.lastHeroPos = new Map();
     this.#wireFeedback();
-    this.showPath = true;
+    this.showPath = shared.settings?.showPath ?? true;
     this.pathDirty = true;
     sim.events.on('wallAdded', () => { this.pathDirty = true; });
     sim.events.on('wallRemoved', () => { this.pathDirty = true; });
     addEventListener('keydown', (e) => {
-      if (e.code === 'KeyP' && !e.repeat) { this.showPath = !this.showPath; this.pathDirty = true; }
+      if (e.code === 'KeyP' && !e.repeat) shared.setSetting('showPath', !this.showPath);
     }, { signal: this.abort.signal });
   }
 
@@ -159,6 +161,39 @@ export class Session {
       if (gateNode) gateNode.visible = false;
     });
     ev.on('gameOver', (summary) => this.shared.onGameOver(summary));
+    this.#wireSound();
+  }
+
+  /** Maps simulation events to sound effects. */
+  #wireSound() {
+    const sfx = this.shared.sfx;
+    if (!sfx) return;
+    const ev = this.sim.events;
+    const ATTACK = { archer: 'bow', crossbowman: 'crossbow', mage: 'magic', alchemist: 'poison' };
+    const IMPACT = {
+      fire: 'fire', explosion: 'explosion', frost: 'frost', arcane: 'arcane', holy: 'holy',
+      rally: 'holy', bash: 'bash', poison: 'poison', bolt: 'crossbow',
+    };
+    ev.on('heroAttack', ({ hero }) => { const s = ATTACK[hero.type]; if (s) sfx.play(s, 0.8); });
+    ev.on('meleeHit', () => sfx.play('melee'));
+    ev.on('impactFx', ({ fx }) => { const s = IMPACT[fx]; if (s) sfx.play(s); });
+    ev.on('zombieAttack', ({ zombie, gate }) => sfx.play(gate ? 'gateHit' : 'wallHit', zombie.boss ? 1.5 : zombie.scale));
+    ev.on('zombieKilled', ({ zombie }) => { sfx.play('death', zombie.scale); sfx.play('gold'); });
+    ev.on('thornsHit', () => sfx.play('thorns'));
+    ev.on('wallAdded', () => sfx.play('build'));
+    ev.on('wallRemoved', ({ cause }) => { if (cause === 'destroyed') sfx.play('wallDestroy'); });
+    for (const t of ['wallRepaired', 'gateRepaired']) ev.on(t, () => sfx.play('repair'));
+    for (const t of ['wallUpgraded', 'gateReinforced', 'talentBought', 'heroRevived']) ev.on(t, () => sfx.play('repair', 1.3));
+    ev.on('heroLevelUp', () => sfx.play('levelUp'));
+    ev.on('waveStarted', ({ boss }) => sfx.play(boss ? 'boss' : 'waveStart'));
+    ev.on('waveCleared', () => sfx.play('waveCleared'));
+    ev.on('bossSpawned', () => sfx.play('boss'));
+    ev.on('bossAbility', () => sfx.play('boss', 0.6));
+    for (const t of ['heroEndangered', 'heroFell']) ev.on(t, () => sfx.play('alarm'));
+    ev.on('gateDamaged', () => { if (this.sim.fortress.endangered) sfx.play('alarm'); });
+    ev.on('gameOver', () => sfx.play('gameOver'));
+    ev.on('actionRejected', () => sfx.play('deny'));
+    ev.on('heroRecruited', () => sfx.play('ui', 1.5));
   }
 
   /** Per-frame rendering sync (real time, independent of game speed). */
@@ -167,6 +202,14 @@ export class Session {
     const sim = this.sim;
     zombieView.sync(sim.zombies.list, sim.zombies.time);
     fx.update(realDt, sim.time, [...sim.zones.list, ...sim.hazards.puddles], sim.walls.all());
+    this.shared.breaches.update(realDt, sim.walls.breachCells());
+    // A failing gate smokes.
+    this.smokeTimer = (this.smokeTimer ?? 0) - realDt;
+    if (sim.fortress.endangered && !sim.fortress.destroyed && this.smokeTimer <= 0) {
+      this.smokeTimer = 0.25;
+      const m = sim.config.MAP;
+      effects.burst({ x: m.gateX + 0.5, y: 1.4, z: m.castleWallRow + 0.3 }, { count: 2, color: 0x3a3632, size: 0.18, speed: 0.15, up: 1.2, life: 1.6, spread: 0.6 });
+    }
     projectileView.sync(sim.projectiles.list);
     this.wallView.update(realDt);
     this.heroView.update(this.shared.loop.paused ? 0 : realDt * this.shared.loop.speed, sim.walls);
@@ -217,6 +260,7 @@ export class Session {
     s.projectileView.sync([]);
     s.effects.clear();
     s.fx.clear();
+    s.breaches.clear();
     s.floaters.clear();
     s.bars.begin(s.cam.camera);
     s.bars.end();

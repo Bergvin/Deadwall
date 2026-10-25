@@ -271,6 +271,17 @@ export class WallView {
         node.userData.worn.push(o.material);
       });
     }
+    // Below half health, fallen stones pile up at the foot of the wall.
+    if (ratio < 0.5 && !node.userData.rubble) {
+      const rubble = this.assets.instance('debris');
+      rubble.scale.setScalar(0.6);
+      rubble.position.set(0.15, 0, 0.3);
+      node.userData.rubble = rubble;
+      node.add(rubble);
+    } else if (ratio >= 0.5 && node.userData.rubble) {
+      node.remove(node.userData.rubble);
+      node.userData.rubble = null;
+    }
     const k = 1 - ratio;
     const [r, gr, b] = TYPE_TINT[wall.type];
     for (const m of node.userData.worn) m.color.setRGB(r * (1 - 0.55 * k), gr * (1 - 0.62 * k), b * (1 - 0.66 * k));

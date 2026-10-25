@@ -45,6 +45,7 @@ export class HeroView {
       }
     }
     actions.idle?.play();
+    if (hero.type === 'crossbowman') this.#equipCrossbow(root);
     const hitbox = new THREE.Mesh(this.hitGeom, this.hitMat);
     hitbox.userData.heroId = hero.id;
     root.add(hitbox);
@@ -52,6 +53,40 @@ export class HeroView {
     const node = { root, mixer, actions, hitbox, base: 'idle' };
     this.#nodes.set(hero.id, node);
     return node;
+  }
+
+  /**
+   * The Rogue model carries a dagger; swap it for a small crossbow attached to the right
+   * hand bone. Built in world units and scaled back by the bone's world scale.
+   */
+  #equipCrossbow(root) {
+    // The crossbow goes where the dagger was: the dagger's parent is the hand bone
+    // (GLTFLoader strips the dot from its glTF name, "Weapon.R" -> "WeaponR").
+    let bone = null;
+    root.traverse((o) => {
+      if (o.name === 'Rogue_Dagger') { o.visible = false; bone = o.parent; }
+    });
+    if (!bone) return;
+    this.crossbowParts ??= {
+      wood: new THREE.MeshLambertMaterial({ color: 0x5a3a20 }),
+      iron: new THREE.MeshLambertMaterial({ color: 0x3a3a40 }),
+      stock: new THREE.BoxGeometry(0.035, 0.035, 0.26),
+      bow: new THREE.BoxGeometry(0.24, 0.02, 0.025),
+      bolt: new THREE.BoxGeometry(0.012, 0.012, 0.2),
+    };
+    const p = this.crossbowParts;
+    const bow = new THREE.Group();
+    const stock = new THREE.Mesh(p.stock, p.wood);
+    const limbs = new THREE.Mesh(p.bow, p.iron);
+    limbs.position.z = 0.12;
+    const bolt = new THREE.Mesh(p.bolt, p.iron);
+    bolt.position.set(0, 0.025, 0.06);
+    bow.add(stock, limbs, bolt);
+    root.updateMatrixWorld(true);
+    const s = new THREE.Vector3();
+    bone.getWorldScale(s);
+    bow.scale.setScalar(1 / s.x);
+    bone.add(bow);
   }
 
   #setBase(node, key) {

@@ -66,7 +66,7 @@ Kenney GLB files may reference `Textures/` next to them, so copy that folder alo
 | 2 | Full game loop: Walker, Archer, gold, waves, breaches, gate, game over, pause/speed, restart | done |
 | 3 | All 6 heroes, abilities, XP, and upgrades | done |
 | 4 | All 5 wall types, all zombie types, and bosses | done |
-| 5 | Effects, audio, UI polish, localStorage, atmosphere (fog, light) | |
+| 5 | Effects, audio, UI polish, localStorage, atmosphere (fog, light) | done |
 | 6 | Balance via simulation; test everything in section 19 of the spec | |
 
 Each phase ends with: the user plays and gives feedback, then commit and push to `main`. Update the status column here as phases finish.
@@ -81,6 +81,9 @@ Each phase ends with: the user plays and gives feedback, then commit and push to
 - `src/ui/hud.js` + `hud.css`: HTML HUD. Canvas-only pointerdown listeners keep UI clicks off the battlefield.
 - `src/game/game.js`: state machine (menu → playing → over) and everything that persists between runs (renderer, camera, assets, scenery, overlay, ZombieView, ProjectileView, Effects, HealthBars, FloatingText). `src/game/session.js`: one run = Simulation + WallView + HeroView + Interaction + Hud + event→feedback wiring; `dispose()` removes every trace (restart is a new Session).
 - Render: `zombieView.js` (baked horde per model; clips Walk/Punch/Death), `heroView.js` (skinned heroes on walkway y 1.18, attack/cast one-shots, invisible pick hit boxes), `fx.js` (expanding rings, zone discs, buffed-wall glow), zombie status tints via per-instance colour in the baked horde, `projectileView.js`, `effects.js` (particle bursts), `healthBars.js` (instanced camera-facing bars). `ui/screens.js` (menu, game over, pause badge), `ui/floatingText.js` (pooled DOM damage numbers).
+- `src/audio/sfx.js`: procedural WebAudio sounds (no files), per-sound throttles, ambient wind; context starts on the first real pointer/key gesture. Event→sound mapping lives in `Session.#wireSound()`.
+- `src/render/ambience.js` (procedural ground CanvasTexture with road to the gate, flickering torch lights, embers, drifting fog wisps, spawn glow), `breachView.js` (rubble + pulsing red ring on breached cells). Walls below 50% HP show rubble; an endangered gate smokes. The crossbowman's dagger is swapped for a small crossbow on the dagger's parent bone (GLTFLoader strips dots from names: `Weapon.R` → `WeaponR`).
+- Settings (volume, muted, shadows, showPath) live in `save.settings`, edited from the main menu and the pause panel (Space), applied by `Game.applySettings()`.
 - `src/main.js`: bootstrap + `window.debug`.
 - Grid coords: cell (x, y), y grows south, north = y 0. Cell center in world = (x + 0.5, 0, y + 0.5). Castle wall row 21, gate (15, 21), spawn rows 0–2.
 - Zombie routing: walls are passable at a cost (`PATHING`), so zombies go around short walls but break through a closed line at its cheapest point.

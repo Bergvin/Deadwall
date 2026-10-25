@@ -73,6 +73,11 @@ export class WallSystem {
     return this.#breaches.size;
   }
 
+  /** Cells of destroyed, not yet rebuilt walls: [{x, y}]. */
+  breachCells() {
+    return [...this.#breaches].map((k) => { const [x, y] = k.split(',').map(Number); return { x, y }; });
+  }
+
   costOf(typeKey) {
     return Math.ceil(this.types[typeKey].cost * this.priceMultiplier());
   }

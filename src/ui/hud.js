@@ -53,8 +53,10 @@ export class Hud {
 
     const ev = sim.events;
     const refresh = () => this.refresh();
+    // Wave start/clear change prices (combat surcharge), so they refresh the cards too.
     for (const t of ['goldChanged', 'wallAdded', 'wallRemoved', 'heroRecruited', 'heroDeployed',
-      'heroDismissed', 'heroUnseated', 'wallRepaired', 'heroFell', 'heroRevived']) ev.on(t, refresh);
+      'heroDismissed', 'heroUnseated', 'wallRepaired', 'heroFell', 'heroRevived',
+      'waveStarted', 'waveCleared']) ev.on(t, refresh);
     // Structural changes rebuild the open panel.
     const rebuild = () => this.showSelection(this.selection);
     for (const t of ['heroLevelUp', 'talentBought', 'heroDeployed', 'heroUnseated', 'heroFell',
@@ -103,7 +105,10 @@ export class Hud {
     this.pauseBtn = h('button', 'btn icon', '❚❚');
     this.pauseBtn.title = 'Pause (Space)';
     this.pauseBtn.addEventListener('click', () => this.actions.togglePause());
-    controls.append(this.waveBtn, this.pauseBtn);
+    this.muteBtn = h('button', 'btn icon');
+    this.muteBtn.title = 'Sound on/off';
+    this.muteBtn.addEventListener('click', () => this.actions.toggleMute());
+    controls.append(this.waveBtn, this.pauseBtn, this.muteBtn);
     this.speedBtns = [1, 2, 3].map((s) => {
       const b = h('button', 'btn icon speed', `${s}×`);
       b.title = `Game speed ${s}×`;
@@ -484,6 +489,9 @@ export class Hud {
     this.pauseBtn.textContent = paused ? '▶' : '❚❚';
     this.pauseBtn.classList.toggle('active', paused);
     this.speedBtns.forEach((b, i) => b.classList.toggle('active', this.actions.getSpeed() === i + 1));
+    const ml = this.actions.isMuted() ? 'Sound off' : 'Sound';
+    if (this.muteBtn.textContent !== ml) this.muteBtn.textContent = ml;
+    this.muteBtn.classList.toggle('active', this.actions.isMuted());
 
     // Boss health bar.
     const boss = sim.zombies.bosses[0];

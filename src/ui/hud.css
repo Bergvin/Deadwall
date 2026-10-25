@@ -205,3 +205,18 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 .preview .boss { color: #ff8a70; }
 .preview .elite { color: #ffb070; }
 .chip.fallen { border-color: var(--red); color: #ffb0a8; }
+
+/* --- phase 5: pause panel and settings --- */
+.pausepanel { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 9; padding: 12px 18px; background: rgba(16, 15, 14, 0.94); border: 1px solid var(--border-hi); border-radius: 8px; text-align: center; min-width: 360px; }
+.pausepanel[hidden] { display: none; }
+.pausepanel .ptitle { font-family: var(--font); font-size: 24px; letter-spacing: 4px; color: var(--gold); margin-bottom: 8px; }
+.pausepanel .pbtns { display: flex; gap: 8px; justify-content: center; }
+.pausepanel .pbtns .btn { width: auto; margin: 0; padding: 6px 14px; }
+.settings { display: grid; gap: 6px; margin: 12px auto 0; text-align: left; width: 260px; font-size: 13px; }
+.setting { display: flex; align-items: center; gap: 10px; color: var(--text); }
+.setting > span:first-child { min-width: 60px; color: var(--muted); }
+.setting input[type=range] { flex: 1; accent-color: var(--gold); }
+.setting.check { cursor: pointer; }
+.setting.check input { accent-color: var(--gold); }
+.screen .settings { margin-top: 18px; }
+.pausebadge { display: none; }

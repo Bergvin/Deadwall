@@ -9,8 +9,10 @@ const DEFAULTS = () => ({
   highScore: 0,
   totalKills: 0,
   runs: 0,
-  settings: { muted: false, volume: 0.7 },
+  settings: { muted: false, volume: 0.7, shadows: true, showPath: true },
 });
+
+const bool = (v, fallback) => (typeof v === 'boolean' ? v : fallback);
 
 const nonNegInt = (v) => (Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
 
@@ -25,8 +27,10 @@ export function sanitize(raw) {
     totalKills: nonNegInt(raw.totalKills),
     runs: nonNegInt(raw.runs),
     settings: {
-      muted: typeof raw.settings?.muted === 'boolean' ? raw.settings.muted : d.settings.muted,
+      muted: bool(raw.settings?.muted, d.settings.muted),
       volume: Number.isFinite(raw.settings?.volume) ? Math.min(1, Math.max(0, raw.settings.volume)) : d.settings.volume,
+      shadows: bool(raw.settings?.shadows, d.settings.shadows),
+      showPath: bool(raw.settings?.showPath, d.settings.showPath),
     },
   };
 }

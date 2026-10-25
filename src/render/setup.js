@@ -1,5 +1,6 @@
 // Renderer, scene, lighting and ground for the battlefield.
 import * as THREE from 'three';
+import { makeGroundTexture } from './ambience.js';
 
 export const PALETTE = {
   background: 0x15161a,
@@ -37,7 +38,7 @@ export function createStage(container, map, cameraDistance) {
   // Ground extends past the map so panning never shows the void.
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(map.width + 40, map.height + 40),
-    new THREE.MeshStandardMaterial({ color: PALETTE.ground, roughness: 1 }),
+    new THREE.MeshStandardMaterial({ map: makeGroundTexture(map, 20), roughness: 1 }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.copy(center);

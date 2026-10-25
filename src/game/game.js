@@ -16,6 +16,9 @@ import { ZombieView } from '../render/zombieView.js';
 import { ProjectileView } from '../render/projectileView.js';
 import { Effects } from '../render/effects.js';
 import { Fx } from '../render/fx.js';
+import { Ambience } from '../render/ambience.js';
+import { BreachView } from '../render/breachView.js';
+import { Sfx } from '../audio/sfx.js';
 import { HealthBars } from '../render/healthBars.js';
 import { FloatingText } from '../ui/floatingText.js';
 import { Screens } from '../ui/screens.js';
@@ -48,6 +51,9 @@ export class Game {
     this.bars = new HealthBars(scene);
     this.floaters = new FloatingText(document.body);
     this.gateNode = world.gate;
+    this.ambience = new Ambience(scene, world, MAP);
+    this.breaches = new BreachView(scene, this.assets);
+    this.sfx = new Sfx(this.save.settings);
 
     this.loop = new GameLoop({
       onStep: (dt) => this.session?.sim.step(dt),
@@ -56,7 +62,11 @@ export class Game {
     this.screens = new Screens(document.body, {
       onNewGame: () => this.newGame(),
       onMenu: () => this.toMenu(),
+      onResume: () => this.togglePause(),
+      getSettings: () => this.save.settings,
+      setSetting: (key, value) => this.setSetting(key, value),
     });
+    this.applySettings();
 
     addEventListener('resize', () => {
       renderer.setSize(container.clientWidth, container.clientHeight);
@@ -86,8 +96,9 @@ export class Game {
     this.session = new Session({
       scene: this.scene, canvas: this.renderer.domElement, cam: this.cam, assets: this.assets,
       overlay: this.overlay, zombieView: this.zombieView, projectileView: this.projectileView,
-      effects: this.effects, fx: this.fx, bars: this.bars, floaters: this.floaters, gateNode: this.gateNode,
+      effects: this.effects, fx: this.fx, bars: this.bars, sfx: this.sfx, breaches: this.breaches, floaters: this.floaters, gateNode: this.gateNode,
       loop: this.loop, seed, togglePause: () => this.togglePause(),
+      settings: this.save.settings, setSetting: (k, v) => this.setSetting(k, v),
       onGameOver: (summary) => this.gameOver(summary),
     });
     this.state = STATE.PLAYING;
@@ -114,6 +125,30 @@ export class Game {
     }, 1200);
   }
 
+  /** Changes a persistent setting, applies it immediately and saves it. */
+  setSetting(key, value) {
+    this.save.settings[key] = value;
+    writeSave(this.save);
+    this.applySettings();
+  }
+
+  applySettings() {
+    const s = this.save.settings;
+    this.sfx.setVolume(s.volume);
+    this.sfx.setMuted(s.muted);
+    if (this.renderer.shadowMap.enabled !== s.shadows) {
+      this.renderer.shadowMap.enabled = s.shadows;
+      // Materials must recompile when shadow support changes.
+      this.scene.traverse((o) => {
+        for (const m of [].concat(o.material ?? [])) m.needsUpdate = true;
+      });
+    }
+    if (this.session) {
+      this.session.showPath = s.showPath;
+      this.session.pathDirty = true;
+    }
+  }
+
   togglePause() {
     if (this.state !== STATE.PLAYING) return;
     this.loop.paused = !this.loop.paused;
@@ -122,6 +157,7 @@ export class Game {
 
   frame(realDt) {
     this.cam.update(realDt);
+    this.ambience.update(realDt);
     this.session?.frame(realDt);
     this.renderer.render(this.scene, this.cam.camera);
   }
