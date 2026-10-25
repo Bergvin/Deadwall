@@ -23,7 +23,7 @@ const loader = new GLTFLoader();
 const north = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.8, 8), new THREE.MeshBasicMaterial({ color: 0xff3030 }));
 north.rotation.x = -Math.PI / 2; north.position.set(-0.8, 0, -1); s.add(north);
 for (const [row, n] of names.entries()) {
-  const g = await loader.loadAsync(`/models/kenney/${n}.glb`);
+  const g = await loader.loadAsync(`../../models/kenney/${n}.glb`);
   for (let k = 0; k < 4; k++) {
     const o = g.scene.clone(); o.rotation.y = k * Math.PI / 2; o.position.set(k * 2, 0, row * 2); s.add(o);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x556070 }));
