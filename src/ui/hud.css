@@ -192,3 +192,16 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 /* The bar is centred with left:50%, which would otherwise cap its width at half the screen. */
 .buildbar { width: max-content; max-width: calc(100vw - 24px); }
 .cards { flex-wrap: nowrap; overflow-x: auto; max-width: none; }
+
+/* --- phase 4 --- */
+.bossbar { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); width: min(520px, 70vw); text-align: center; pointer-events: none; }
+.bossbar[hidden] { display: none; }
+.bossbar .bname { font-family: var(--font); font-size: 18px; letter-spacing: 2px; color: #f0c8b8; text-shadow: 0 0 10px rgba(200, 40, 30, 0.8); }
+.bossbar .bar { height: 12px; border: 1px solid #6a2a22; background: rgba(20, 8, 6, 0.85); }
+.bossbar .bar > div { background: linear-gradient(90deg, #8a1a14, #d0453a); transition: width 0.15s; }
+.preview { position: absolute; top: 52px; left: 12px; max-width: 46vw; font-size: 12px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; }
+.preview[hidden] { display: none; }
+.preview .label { color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-size: 11px; margin-right: 4px; }
+.preview .boss { color: #ff8a70; }
+.preview .elite { color: #ffb070; }
+.chip.fallen { border-color: var(--red); color: #ffb0a8; }

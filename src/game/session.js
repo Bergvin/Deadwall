@@ -33,6 +33,7 @@ export class Session {
       recruit: (type) => this.recruit(type),
       deploy: (heroId) => this.input.enterDeploy(heroId),
       useAbility: (heroId, id) => this.input.useAbility(heroId, id),
+      select: (sel) => this.input.select(sel),
       startWave: () => sim.waves.startNext(),
       togglePause: () => shared.togglePause(),
       setSpeed: (s) => { loop.speed = s; },
@@ -49,6 +50,7 @@ export class Session {
       if (e.code === 'Enter' || e.code === 'NumpadEnter') sim.waves.startNext();
     }, { signal: this.abort.signal });
 
+    this.lastHeroPos = new Map();
     this.#wireFeedback();
     this.showPath = true;
     this.pathDirty = true;
@@ -95,6 +97,27 @@ export class Session {
       floaters.spawn({ x: p.x, y: 2.4, z: p.z }, `Level ${hero.level}!`, 'level');
       fx.ring(p.x, p.z, 1.2, FX_COLORS.level, 0.8, 1.25);
       effects.burst({ x: p.x, y: 1.8, z: p.z }, { count: 16, color: FX_COLORS.level, size: 0.06, speed: 1, up: 2.5, life: 0.9, spread: 0.3 });
+    });
+    ev.on('bossAbility', ({ zombie, kind, radius }) => {
+      const color = kind === 'summon' ? 0x7cff5a : 0xd060ff;
+      fx.ring(zombie.x, zombie.z, radius, color, 0.9);
+      effects.burst({ x: zombie.x, y: 1.2, z: zombie.z }, { count: 20, color, size: 0.08, speed: 1.8, up: 2.2, life: 0.9, spread: 0.6 });
+    });
+    ev.on('bossSpawned', (z) => fx.ring(z.x, z.z, 2.5, 0xd0453a, 1.2));
+    ev.on('thornsHit', ({ zombie }) => {
+      effects.burst({ x: zombie.x, y: 0.6, z: zombie.z }, { count: 2, color: 0x8a1a14, size: 0.05, speed: 0.8, up: 1, life: 0.35, spread: 0.15 });
+    });
+    ev.on('heroDamaged', ({ hero, amount }) => {
+      const p = this.sim.heroes.positionOf(hero);
+      if (p && amount >= 1) floaters.spawn({ x: p.x, y: 2.3, z: p.z }, `-${Math.round(amount)}`, 'wall');
+    });
+    ev.on('heroFell', (hero) => {
+      const w = this.lastHeroPos.get(hero.id);
+      if (w) effects.burst({ x: w.x, y: 1.5, z: w.z }, { count: 18, color: 0x6a1a14, size: 0.08, speed: 1.4, up: 2, life: 1, spread: 0.3 });
+    });
+    ev.on('wallUpgraded', ({ wall }) => {
+      fx.ring(wall.x + 0.5, wall.y + 0.5, 0.9, FX_COLORS.level, 0.6, 1.25);
+      effects.burst({ x: wall.x + 0.5, y: 1.3, z: wall.y + 0.5 }, { count: 10, color: FX_COLORS.level, size: 0.05, speed: 0.8, up: 2, life: 0.7, spread: 0.4 });
     });
     ev.on('zombieDamaged', ({ zombie, amount, crit, dot }) => {
       if (dot) return; // damage over time is shown by the zombie's tint, not numbers
@@ -143,7 +166,7 @@ export class Session {
     const { zombieView, projectileView, effects, bars, floaters, cam, canvas, gateNode, fx } = this.shared;
     const sim = this.sim;
     zombieView.sync(sim.zombies.list, sim.zombies.time);
-    fx.update(realDt, sim.time, sim.zones.list, sim.walls.all());
+    fx.update(realDt, sim.time, [...sim.zones.list, ...sim.hazards.puddles], sim.walls.all());
     projectileView.sync(sim.projectiles.list);
     this.wallView.update(realDt);
     this.heroView.update(this.shared.loop.paused ? 0 : realDt * this.shared.loop.speed, sim.walls);
@@ -161,6 +184,11 @@ export class Session {
     }
     for (const w of sim.walls.all()) {
       if (w.hp < w.maxHp) bars.add(w.x + 0.5, 1.75, w.y + 0.5, w.hp / w.maxHp, healthColor(w.hp / w.maxHp), 0.8);
+    }
+    for (const h of sim.heroes.active()) {
+      const p = sim.heroes.positionOf(h);
+      this.lastHeroPos.set(h.id, p);
+      if (h.hp < h.maxHp) bars.add(p.x, 2.25, p.z, h.hp / h.maxHp, 0x6fa8ff, 0.5);
     }
     bars.end();
 

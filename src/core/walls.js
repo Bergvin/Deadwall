@@ -2,6 +2,25 @@
 // neighbour connectivity.
 import { TERRAIN } from './grid.js';
 
+/**
+ * Effective stats of a wall type at an upgrade level (pure; used for live walls and the
+ * upgrade preview).
+ */
+export function wallStats(type, level, upgrades) {
+  const k = level - 1;
+  return {
+    maxHp: Math.round(type.maxHp * upgrades.hpMult ** k),
+    armor: type.armor ?? 0,
+    heroCapacity: type.heroCapacity,
+    thorns: type.thorns ? type.thorns * upgrades.thornsMult ** k : 0,
+    arcane: type.arcane ? {
+      ...type.arcane,
+      pulseDamage: type.arcane.pulseDamage * upgrades.arcaneDamageMult ** k,
+      radius: type.arcane.radius + upgrades.arcaneRadiusAdd * k,
+    } : null,
+  };
+}
+
 /** Connection bits for neighbour masks. */
 export const DIR = { N: 1, E: 2, S: 4, W: 8 };
 
@@ -17,8 +36,10 @@ export class WallSystem {
    * @param {Record<string, object>} types  wall type configs (config/game.js WALLS)
    * @param {import('./events.js').Emitter} events
    * @param {{sellRefund:number, repairCostFactor?:number}} economyConfig
+   * @param {typeof import('../config/game.js').WALL_UPGRADES} [upgrades]
    */
-  constructor(grid, economy, types, events, economyConfig) {
+  constructor(grid, economy, types, events, economyConfig, upgrades = { maxLevel: 1, costMult: [], hpMult: 1, thornsMult: 1, arcaneDamageMult: 1, arcaneRadiusAdd: 0 }) {
+    this.upgrades = upgrades;
     this.grid = grid;
     this.economy = economy;
     this.types = types;
@@ -79,16 +100,21 @@ export class WallSystem {
     const type = this.types[typeKey];
     const price = this.costOf(typeKey);
     if (!this.economy.trySpend(price, `build:${typeKey}`)) return null;
+    const st = wallStats(type, 1, this.upgrades);
     const wall = {
       id: this.#nextId++,
       type: typeKey,
       x, y,
-      hp: type.maxHp,
-      maxHp: type.maxHp,
+      hp: st.maxHp,
+      maxHp: st.maxHp,
       level: 1,
       // Refunds are based on the base cost, never on combat surcharges.
       invested: type.cost,
-      heroCapacity: type.heroCapacity,
+      heroCapacity: st.heroCapacity,
+      armor: st.armor,
+      thorns: st.thorns,
+      arcane: st.arcane,
+      pulseTimer: 0,
       heroes: [],
       /** Timed damage reductions: {reduction, until, kind}. */
       buffs: [],
@@ -104,12 +130,48 @@ export class WallSystem {
   damage(id, amount, source = null) {
     const w = this.get(id);
     if (!w || !(amount > 0)) return 0;
-    amount *= this.damageModifier(w);
+    amount *= this.damageModifier(w) * (1 - w.armor);
     const dealt = Math.min(w.hp, amount);
     w.hp -= dealt;
     this.events.emit('wallDamaged', { wall: w, amount: dealt, source });
     if (w.hp <= 0) this.destroy(id);
     return dealt;
+  }
+
+  upgradeCost(id) {
+    const w = this.get(id);
+    if (!w || w.level >= this.upgrades.maxLevel) return 0;
+    return Math.ceil(this.types[w.type].cost * this.upgrades.costMult[w.level - 1] * this.priceMultiplier());
+  }
+
+  /** @returns {{ok: true} | {ok: false, reason: string}} */
+  canUpgrade(id) {
+    const w = this.get(id);
+    if (!w) return { ok: false, reason: 'no_wall' };
+    if (w.level >= this.upgrades.maxLevel) return { ok: false, reason: 'max_level' };
+    if (!this.economy.canAfford(this.upgradeCost(id))) return { ok: false, reason: 'insufficient_gold' };
+    return { ok: true };
+  }
+
+  /** Raises the wall's level: more max HP (current HP rises by the same amount), stronger effects. */
+  upgrade(id) {
+    const check = this.canUpgrade(id);
+    if (!check.ok) {
+      this.events.emit('actionRejected', { action: 'upgrade', reason: check.reason });
+      return false;
+    }
+    const w = this.get(id);
+    const cost = this.upgradeCost(id);
+    if (!this.economy.trySpend(cost, `upgrade:${w.type}`)) return false;
+    w.level++;
+    const st = wallStats(this.types[w.type], w.level, this.upgrades);
+    w.hp += st.maxHp - w.maxHp;
+    w.maxHp = st.maxHp;
+    w.thorns = st.thorns;
+    w.arcane = st.arcane;
+    w.invested += this.types[w.type].cost * this.upgrades.costMult[w.level - 2];
+    this.events.emit('wallUpgraded', { wall: w, cost });
+    return true;
   }
 
   repairCost(id) {

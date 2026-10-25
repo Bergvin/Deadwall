@@ -52,5 +52,11 @@ export const MODELS = {
     url: '/models/heroes/Monk.gltf', fit: { axis: 'y', size: 0.9 },
     anims: { idle: 'Idle', ready: 'Idle_Attacking', attack: 'Attack', cast: 'Attack2', walk: 'Walk' },
   },
-  walker: { url: '/models/zombies/Zombie_Basic.gltf', fit: { axis: 'y', size: 0.85 } },
+  // Zombies and bosses (baked hordes). zanims maps roles to clips: move, attack, death.
+  walker: { url: '/models/zombies/Zombie_Basic.gltf', fit: { axis: 'y', size: 0.85 }, zanims: { move: 'Walk', attack: 'Punch', death: 'Death' } },
+  runner: { url: '/models/zombies/Zombie_Arm.gltf', fit: { axis: 'y', size: 0.85 }, zanims: { move: 'Run', attack: 'Punch', death: 'Death' } },
+  brute: { url: '/models/zombies/Zombie_Chubby.gltf', fit: { axis: 'y', size: 0.85 }, zanims: { move: 'Walk', attack: 'Punch', death: 'Death' } },
+  plague: { url: '/models/zombies/Zombie_Ribcage.gltf', fit: { axis: 'y', size: 0.85 }, zanims: { move: 'Walk', attack: 'HitReact', death: 'Death' } },
+  behemoth: { url: '/models/bosses/Yeti.gltf', fit: { axis: 'y', size: 1.9 }, zanims: { move: 'Walk', attack: 'Punch', death: 'Death' } },
+  gravelord: { url: '/models/bosses/Demon.gltf', fit: { axis: 'y', size: 1.9 }, zanims: { move: 'Walk', attack: 'Weapon', death: 'Death' } },
 };

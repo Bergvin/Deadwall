@@ -5,6 +5,7 @@ import * as THREE from 'three';
 export const FX_COLORS = {
   fire: 0xff7a20, frost: 0x8fd8ff, arcane: 0xb57aff, poison: 0x7cff5a, explosion: 0xffa040,
   bash: 0xf0e6d0, rally: 0xffc23d, holy: 0xffe08a, bolt: 0xc8b8a0, hit: 0xc8b8a0, level: 0xffd23d,
+  plague: 0x5aa020,
 };
 
 export class Fx {
@@ -56,15 +57,17 @@ export class Fx {
     // Zones: one translucent disc per live zone, gently pulsing.
     const live = new Set();
     for (const zn of zones) {
-      live.add(zn.id);
-      let m = this.zoneMeshes.get(zn.id);
+      // Zones and hazard puddles have separate id sequences, so key by kind too.
+      const key = zn.kind + zn.id;
+      live.add(key);
+      let m = this.zoneMeshes.get(key);
       if (!m) {
         m = new THREE.Mesh(this.discGeom, new THREE.MeshBasicMaterial({
           color: FX_COLORS[zn.kind] ?? 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
         }));
         m.position.set(zn.x, 0.05, zn.z);
         this.root.add(m);
-        this.zoneMeshes.set(zn.id, m);
+        this.zoneMeshes.set(key, m);
       }
       const fadeIn = Math.min(1, zn.age / 0.3), fadeOut = Math.min(1, (zn.duration - zn.age) / 0.6);
       m.scale.set(zn.radius, 1, zn.radius);

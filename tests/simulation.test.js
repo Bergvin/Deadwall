@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { Simulation } from '../src/core/simulation.js';
 import { PHASE } from '../src/core/waves.js';
 import { ZSTATE } from '../src/core/zombies.js';
-import { MAP, ZOMBIES, HEROES, WAVES } from '../src/config/game.js';
+import { MAP, ZOMBIES, HEROES, WAVES, WAVE_TABLE, ELITE } from '../src/config/game.js';
+import { waveComposition } from '../src/core/waves.js';
 import { sanitize, loadSave, writeSave, recordRun } from '../src/core/save.js';
 
 const DT = 1 / 60;
@@ -140,7 +141,7 @@ test('waves: early start never duplicates; clearing pays a bonus and returns to 
   assert.equal(sim.waves.phase, PHASE.PREP);
   assert.ok(sim.waves.startNext());
   assert.equal(sim.waves.startNext(), false, 'second start ignored while active');
-  const expected = WAVES.walkerBase;
+  const expected = waveComposition(1, WAVE_TABLE, ELITE).groups.reduce((a, g) => a + g.count, 0);
   assert.equal(sim.waves.remaining, expected);
   let spawned = 0;
   sim.events.on('zombieSpawned', () => spawned++);

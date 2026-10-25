@@ -34,30 +34,18 @@ export const FORTRESS = {
   gateMaxHp: 1500,
   /** Gate HP fraction below which the HUD warns that the fortress is in danger. */
   warnAt: 0.35,
+  /** Reinforcing the gate: each level adds maxHp (and heals that much). Costs escalate. */
+  reinforce: [
+    { cost: 150, addHp: 600 },
+    { cost: 300, addHp: 800 },
+    { cost: 550, addHp: 1000 },
+  ],
+  /** Gate repair: gold per missing HP (the gate is more expensive to fix than walls). */
+  repairCostPerHp: 0.35,
 };
 
-/**
- * Zombie types. Speeds are cells per second; attackInterval is seconds between hits.
- * reward is gold granted exactly once on death; xp is shared among heroes that hurt it.
- */
-export const ZOMBIES = {
-  walker: {
-    name: 'Walker',
-    hp: 60,
-    /** Fraction of physical damage ignored (armor penetration lowers it). */
-    armor: 0,
-    /** Fraction of magic damage ignored (holy ignores it). */
-    resist: 0,
-    speed: 0.6,
-    wallDamage: 12,
-    attackInterval: 1.2,
-    reward: 4,
-    xp: 10,
-    model: 'walker',
-    tint: null,
-    scale: 1,
-  },
-};
+// Zombie, boss, elite and wave-composition config lives in enemies.js.
+export { ZOMBIES, ELITE, WAVE_TABLE } from './enemies.js';
 
 // Hero classes, rules and targeting modes live in heroes.js.
 export { HEROES, HERO_RULES, TARGETING } from './heroes.js';
@@ -67,11 +55,7 @@ export const WAVES = {
   firstPrepTime: 60,
   /** Seconds of preparation between waves. */
   prepTime: 25,
-  /** Walker count = base + perWave * (wave - 1). */
-  walkerBase: 8,
-  walkerPerWave: 4,
-  /** Enemy HP multiplier grows linearly per wave: 1 + hpGrowth * (wave - 1). */
-  hpGrowth: 0.12,
+  /** Enemy counts, bosses and scaling are in enemies.js (WAVE_TABLE). */
   /** Seconds between spawns at wave 1, shrinking toward minSpawnInterval. */
   spawnInterval: 1.1,
   spawnIntervalDecay: 0.06,
@@ -86,15 +70,48 @@ export const SCORE = {
   perWaveCleared: 250,
 };
 
-/** Wall types. Phase 1 has only Stone; the rest arrive in phase 4. */
+/**
+ * Wall types. All share the same modular pieces so mixed lines connect; each type has its
+ * own tint and decorations (see render/wallView.js). heroCapacity > 1 makes a platform.
+ * armor: fraction of zombie damage ignored. thorns: damage per second dealt to every zombie
+ * attacking it. arcane: aura that slows and pulses magic damage.
+ */
 export const WALLS = {
   stone: {
-    name: 'Stone Wall',
-    cost: 20,
-    maxHp: 300,
-    heroCapacity: 1,
+    name: 'Stone Wall', short: 'Stone',
+    cost: 20, maxHp: 300, heroCapacity: 1, armor: 0,
     description: 'Affordable basic wall. Moderate health, holds one hero.',
   },
+  reinforced: {
+    name: 'Reinforced Wall', short: 'Reinforced',
+    cost: 45, maxHp: 750, heroCapacity: 2, armor: 0.2,
+    description: 'Timber and iron braced. Very durable, resists heavy blows, holds two heroes.',
+  },
+  spiked: {
+    name: 'Spiked Wall', short: 'Spiked',
+    cost: 35, maxHp: 380, heroCapacity: 1, armor: 0,
+    thorns: 6,
+    description: 'Iron spikes wound every zombie that attacks it. Great against hordes.',
+  },
+  arcane: {
+    name: 'Arcane Wall', short: 'Arcane',
+    cost: 90, maxHp: 500, heroCapacity: 1, armor: 0.05,
+    arcane: { radius: 2.2, slow: 0.6, pulseDamage: 18, pulseInterval: 2.5 },
+    description: 'Glowing runes slow nearby zombies and pulse magic damage at them.',
+  },
+};
+
+/**
+ * Wall upgrades (levels 2 and 3). Cost is a multiple of the wall's base cost; each level
+ * raises max HP and strengthens the type's special effect.
+ */
+export const WALL_UPGRADES = {
+  maxLevel: 3,
+  costMult: [0.9, 1.6],
+  hpMult: 1.35,
+  thornsMult: 1.5,
+  arcaneDamageMult: 1.4,
+  arcaneRadiusAdd: 0.3,
 };
 
 export const PATHING = {

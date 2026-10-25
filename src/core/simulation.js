@@ -11,6 +11,8 @@ import { HeroSystem } from './heroes.js';
 import { ProjectileSystem } from './projectiles.js';
 import { ZoneSystem } from './zones.js';
 import { CombatSystem } from './combat.js';
+import { WallEffectSystem } from './wallEffects.js';
+import { HazardSystem } from './hazards.js';
 import { WaveSystem, PHASE } from './waves.js';
 import { createRng } from './rng.js';
 
@@ -28,11 +30,11 @@ export class Simulation {
 
     this.grid = createMapGrid(c.MAP);
     this.economy = new Economy(c.ECONOMY.startingGold, this.events);
-    this.walls = new WallSystem(this.grid, this.economy, c.WALLS, this.events, c.ECONOMY);
-    this.fortress = new Fortress({ x: c.MAP.gateX, y: c.MAP.castleWallRow }, c.FORTRESS, this.events);
+    this.walls = new WallSystem(this.grid, this.economy, c.WALLS, this.events, c.ECONOMY, c.WALL_UPGRADES);
+    this.fortress = new Fortress({ x: c.MAP.gateX, y: c.MAP.castleWallRow }, c.FORTRESS, this.events, this.economy);
     this.zombies = new ZombieSystem({
       grid: this.grid, walls: this.walls, fortress: this.fortress, economy: this.economy,
-      events: this.events, rng: this.rng, types: c.ZOMBIES, pathing: c.PATHING,
+      events: this.events, rng: this.rng, types: c.ZOMBIES, pathing: c.PATHING, elite: c.ELITE,
     });
     this.heroes = new HeroSystem({
       walls: this.walls, zombies: this.zombies, economy: this.economy,
@@ -48,11 +50,15 @@ export class Simulation {
     });
     this.waves = new WaveSystem({
       zombies: this.zombies, economy: this.economy, events: this.events, rng: this.rng,
-      cfg: c.WAVES, map: c.MAP,
+      cfg: c.WAVES, table: c.WAVE_TABLE, elite: c.ELITE, map: c.MAP,
     });
+    this.wallEffects = new WallEffectSystem({ walls: this.walls, zombies: this.zombies, events: this.events });
+    this.hazards = new HazardSystem({ zombies: this.zombies, heroes: this.heroes, events: this.events, types: c.ZOMBIES });
 
     // Cross-system rules.
     this.walls.priceMultiplier = () => (this.waves.phase === PHASE.ACTIVE ? c.ECONOMY.combatBuildMultiplier : 1);
+    this.fortress.priceMultiplier = this.walls.priceMultiplier;
+    this.heroes.reviveAllowed = () => this.waves.phase === PHASE.PREP;
     this.walls.damageModifier = (w) => this.combat.wallDamageMultiplier(w);
     this.walls.placementBlocker = (x, y) => (this.zombies.cellCount[this.grid.index(x, y)] ? 'enemy_present' : null);
 
@@ -66,6 +72,7 @@ export class Simulation {
     });
     ev.on('goldChanged', ({ delta }) => { if (delta > 0) this.stats.goldEarned += delta; });
     ev.on('waveCleared', () => {
+      this.heroes.healAll();
       this.stats.wavesCleared++;
       this.stats.score += c.SCORE.perWaveCleared;
     });
@@ -86,6 +93,8 @@ export class Simulation {
     this.combat.step(dt);
     this.projectiles.step(dt);
     this.zones.step(dt);
+    this.wallEffects.step(dt);
+    this.hazards.step(dt);
   }
 
   /** Runs whole seconds of simulation (tests and balance runs). */

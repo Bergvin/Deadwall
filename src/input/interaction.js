@@ -27,6 +27,9 @@ export const REJECT_TEXT = {
   moving: 'The hero is still moving',
   tier_taken: 'Already chose a talent in that tier',
   level_too_low: 'Hero level too low',
+  fallen: 'That hero has fallen; revive them between waves',
+  max_level: 'Already at maximum level',
+  wave_active: 'Only possible between waves',
 };
 
 export class Interaction {
@@ -160,7 +163,7 @@ export class Interaction {
     const w = sel?.kind === 'wall' ? this.walls.get(sel.id) : null;
     const h = sel?.kind === 'hero' ? this.heroes.get(sel.id) : null;
     const hw = h?.wallId ? this.walls.get(h.wallId) : null;
-    const at = w ?? hw;
+    const at = w ?? hw ?? (sel?.kind === 'gate' ? this.sim.fortress.gate : null);
     this.overlay.setSelection(at ? { x: at.x, y: at.y } : null);
     this.hud.showSelection(sel);
   }
@@ -259,7 +262,11 @@ export class Interaction {
       const h = this.heroAt(e.clientX, e.clientY);
       if (h) { this.select({ kind: 'hero', id: h.id }); return; }
       const w = this.wallAt(e.clientX, e.clientY);
-      this.select(w ? { kind: 'wall', id: w.id } : null);
+      if (w) { this.select({ kind: 'wall', id: w.id }); return; }
+      const c = this.cellAt(e.clientX, e.clientY);
+      const gate = this.sim.fortress.gate;
+      // The gate (and the wall cells beside it) select the fortress gate.
+      this.select(c && c.y === gate.y && Math.abs(c.x - gate.x) <= 1 ? { kind: 'gate' } : null);
     }
   }
 
@@ -299,12 +306,22 @@ export class Interaction {
     const sel = this.selection;
     switch (e.code) {
       case 'KeyB': case 'Digit1': this.enterBuild('stone'); break;
+      case 'Digit2': this.enterBuild('reinforced'); break;
+      case 'Digit3': this.enterBuild('spiked'); break;
+      case 'Digit4': this.enterBuild('arcane'); break;
+      case 'KeyU':
+        if (sel?.kind === 'wall') {
+          const r = this.walls.canUpgrade(sel.id);
+          if (r.ok) this.walls.upgrade(sel.id); else this.hud.toast(REJECT_TEXT[r.reason] ?? 'Cannot upgrade');
+        }
+        break;
       case 'Escape': this.cancel(); break;
       case 'Delete': case 'Backspace':
         if (sel?.kind === 'wall') this.walls.sell(sel.id);
         break;
       case 'KeyR':
         if (sel?.kind === 'wall' && !this.walls.repair(sel.id) && this.walls.repairCost(sel.id)) this.hud.toast('Not enough gold');
+        if (sel?.kind === 'gate' && !this.sim.fortress.repair() && this.sim.fortress.repairCost()) this.hud.toast('Not enough gold');
         break;
       case 'KeyM':
         if (sel?.kind === 'hero') this.enterDeploy(sel.id);

@@ -46,15 +46,22 @@ export class Hud {
     this.toasts = h('div', 'toasts');
     this.banner = h('div', 'banner');
     this.vignette = h('div', 'vignette');
-    this.el.append(this.toasts, this.banner, this.vignette);
+    this.bossBar = h('div', 'bossbar', '<div class="bname"></div><div class="bar"><div></div></div>');
+    this.bossBar.hidden = true;
+    this.preview = h('div', 'preview');
+    this.el.append(this.toasts, this.banner, this.vignette, this.bossBar, this.preview);
 
     const ev = sim.events;
     const refresh = () => this.refresh();
     for (const t of ['goldChanged', 'wallAdded', 'wallRemoved', 'heroRecruited', 'heroDeployed',
-      'heroDismissed', 'heroUnseated', 'wallRepaired']) ev.on(t, refresh);
+      'heroDismissed', 'heroUnseated', 'wallRepaired', 'heroFell', 'heroRevived']) ev.on(t, refresh);
     // Structural changes rebuild the open panel.
     const rebuild = () => this.showSelection(this.selection);
-    for (const t of ['heroLevelUp', 'talentBought', 'heroDeployed', 'heroUnseated']) ev.on(t, rebuild);
+    for (const t of ['heroLevelUp', 'talentBought', 'heroDeployed', 'heroUnseated', 'heroFell',
+      'heroRevived', 'wallUpgraded', 'gateReinforced']) ev.on(t, rebuild);
+    ev.on('heroEndangered', (hero) => this.toast(`${hero.name} is badly hurt!`, 'alert'));
+    ev.on('heroFell', (hero) => this.toast(`${hero.name} has fallen! Revive them between waves.`, 'alert'));
+    ev.on('bossSpawned', (z) => this.showBanner(this.cfg.ZOMBIES[z.type].name, this.cfg.ZOMBIES[z.type].description));
     ev.on('waveStarted', ({ wave }) => this.showBanner(`Wave ${wave}`, 'The dead are coming'));
     ev.on('waveCleared', ({ wave, bonus }) => this.showBanner(`Wave ${wave} cleared`, `+${bonus} gold`));
     ev.on('heroUnseated', ({ hero, cause }) => {
@@ -133,9 +140,12 @@ export class Hud {
     this.cardEls = {};
     if (this.tab === 'walls') {
       Object.entries(this.cfg.WALLS).forEach(([key, t], i) => {
+        const special = t.thorns ? `${t.thorns} thorn dmg/s`
+          : t.arcane ? 'Slows + magic pulse' : t.armor ? `${Math.round(t.armor * 100)}% armor` : 'Basic';
         const c = h('button', 'card',
-          `<span class="key">${i === 0 ? 'B' : i + 1}</span><div class="name">${t.name}</div>`
-          + `<div class="cost"></div><div class="meta">${t.maxHp} HP · ${t.heroCapacity} hero slot</div>`);
+          `<span class="key">${i + 1}</span><div class="name">${t.name}</div>`
+          + `<div class="cost"></div><div class="meta">${t.maxHp} HP · ${t.heroCapacity} hero${t.heroCapacity > 1 ? 'es' : ''}</div>`
+          + `<div class="meta">${special}</div>`);
         c.title = t.description;
         c.addEventListener('click', () => this.actions.build(key));
         this.cards.append(c);
@@ -187,12 +197,14 @@ export class Hud {
     const sim = this.sim;
     const wall = sel?.kind === 'wall' ? sim.walls.get(sel.id) : null;
     const hero = sel?.kind === 'hero' ? sim.heroes.get(sel.id) : null;
-    this.side.hidden = !wall && !hero;
+    const gate = sel?.kind === 'gate';
+    this.side.hidden = !wall && !hero && !gate;
     this.side.innerHTML = '';
     this.side.classList.toggle('wide', !!hero);
     this.dyn = null;
     if (wall) this.#buildWallPanel(wall);
     else if (hero) this.#buildHeroPanel(hero);
+    else if (gate) this.#buildGatePanel();
     this.dyn?.();
   }
 
@@ -200,17 +212,33 @@ export class Hud {
     const sim = this.sim;
     const t = this.cfg.WALLS[wall.type];
     const names = wall.heroes.map((id) => sim.heroes.get(id)?.name).filter(Boolean).join(', ') || '—';
+    const maxLevel = this.cfg.WALL_UPGRADES.maxLevel;
+    let special = '';
+    if (wall.armor) special += `<div class="row"><span>Armor</span><b>${Math.round(wall.armor * 100)}%</b></div>`;
+    if (wall.thorns) special += `<div class="row"><span>Thorns</span><b>${fmt(wall.thorns, 1)} dmg/s to attackers</b></div>`;
+    if (wall.arcane) {
+      special += `<div class="row"><span>Arcane aura</span><b>r ${fmt(wall.arcane.radius, 1)} · slow ${Math.round((1 - wall.arcane.slow) * 100)}%</b></div>`
+        + `<div class="row"><span>Pulse</span><b>${fmt(wall.arcane.pulseDamage, 0)} magic / ${wall.arcane.pulseInterval}s</b></div>`;
+    }
     this.side.innerHTML =
-      `<h3>${t.name}</h3>`
+      `<h3>${t.name}</h3><div class="sub">Level ${wall.level} / ${maxLevel}</div>`
       + '<div class="row"><span>Health</span><b class="v-hp"></b></div><div class="bar"><div class="v-bar"></div></div>'
+      + special
       + `<div class="row"><span>Heroes</span><b>${wall.heroes.length} / ${wall.heroCapacity}</b></div>`
       + `<div class="row"><span>Stationed</span><b>${names}</b></div>`
       + '<div class="row v-buffrow"><span>Protected</span><b class="v-buff"></b></div>';
     const repair = h('button', 'btn');
     repair.addEventListener('click', () => { if (!sim.walls.repair(wall.id)) this.toast('Not enough gold'); });
+    const upgrade = h('button', 'btn');
+    upgrade.addEventListener('click', () => {
+      const r = sim.walls.canUpgrade(wall.id);
+      if (r.ok) { sim.walls.upgrade(wall.id); this.showSelection(this.selection); } else this.toast(r.reason === 'max_level' ? 'Already at maximum level' : 'Not enough gold');
+    });
     const sell = h('button', 'btn danger');
     sell.addEventListener('click', () => sim.walls.sell(wall.id));
-    this.side.append(repair, sell);
+    this.side.append(repair, upgrade, sell);
+    const nextHp = wall.level < maxLevel
+      ? Math.round(this.cfg.WALLS[wall.type].maxHp * this.cfg.WALL_UPGRADES.hpMult ** wall.level) : null;
     const q = (c) => this.side.querySelector(c);
     this.dyn = () => {
       const r = wall.hp / wall.maxHp;
@@ -221,12 +249,45 @@ export class Hud {
       const label = cost ? `Repair for ${cost} gold <span class="k">R</span>` : 'Fully repaired';
       if (repair.innerHTML !== label) repair.innerHTML = label;
       repair.disabled = !cost || !sim.economy.canAfford(cost);
+      const ucost = sim.walls.upgradeCost(wall.id);
+      const ul = nextHp ? `Upgrade to level ${wall.level + 1} (${nextHp} HP) for ${ucost} gold <span class="k">U</span>` : 'Fully upgraded';
+      if (upgrade.innerHTML !== ul) upgrade.innerHTML = ul;
+      upgrade.disabled = !nextHp || !sim.economy.canAfford(ucost);
       const sl = `Sell for ${sim.walls.sellValue(wall.id)} gold <span class="k">Del</span>`;
       if (sell.innerHTML !== sl) sell.innerHTML = sl;
       const buff = wall.buffs.find((b) => b.until > sim.time);
       const mult = sim.combat.wallDamageMultiplier(wall);
       q('.v-buffrow').style.display = mult < 1 ? '' : 'none';
       q('.v-buff').textContent = `-${Math.round((1 - mult) * 100)}% damage${buff ? ` (${fmt(buff.until - sim.time)}s)` : ''}`;
+    };
+  }
+
+  #buildGatePanel() {
+    const f = this.sim.fortress;
+    this.side.innerHTML =
+      '<h3>Fortress Gate</h3><div class="sub">If the gate falls, the run is over.</div>'
+      + '<div class="row"><span>Health</span><b class="v-hp"></b></div><div class="bar"><div class="v-bar"></div></div>'
+      + '<div class="row"><span>Reinforcement</span><b class="v-lvl"></b></div>';
+    const repair = h('button', 'btn');
+    repair.addEventListener('click', () => { if (!f.repair()) this.toast('Not enough gold'); });
+    const reinforce = h('button', 'btn');
+    reinforce.addEventListener('click', () => { if (!f.reinforce()) this.toast('Not enough gold'); });
+    this.side.append(repair, reinforce);
+    const q = (c) => this.side.querySelector(c);
+    this.dyn = () => {
+      const r = f.hp / f.maxHp;
+      q('.v-hp').textContent = `${Math.ceil(f.hp)} / ${f.maxHp}`;
+      q('.v-bar').style.width = `${(r * 100).toFixed(1)}%`;
+      q('.v-bar').style.background = barColor(r);
+      q('.v-lvl').textContent = `${f.reinforceLevel} / ${this.cfg.FORTRESS.reinforce.length}`;
+      const cost = f.repairCost();
+      const rl = cost ? `Repair for ${cost} gold <span class="k">R</span>` : 'Fully repaired';
+      if (repair.innerHTML !== rl) repair.innerHTML = rl;
+      repair.disabled = !cost || !this.sim.economy.canAfford(cost);
+      const step = f.nextReinforcement();
+      const fl = step ? `Reinforce (+${step.addHp} max HP) for ${step.cost} gold` : 'Fully reinforced';
+      if (reinforce.innerHTML !== fl) reinforce.innerHTML = fl;
+      reinforce.disabled = !step || !this.sim.economy.canAfford(step.cost);
     };
   }
 
@@ -311,7 +372,18 @@ export class Hud {
 
     // Management
     const wall = hero.wallId ? sim.walls.get(hero.wallId) : null;
+    if (hero.fallen) {
+      const revive = h('button', 'btn wavebtn');
+      revive.addEventListener('click', () => {
+        const r = sim.heroes.canRevive(hero.id);
+        if (r.ok) sim.heroes.revive(hero.id);
+        else this.toast(r.reason === 'wave_active' ? 'Heroes can only be revived between waves' : 'Not enough gold');
+      });
+      this.side.append(revive);
+      this.reviveBtn = revive;
+    }
     const move = h('button', 'btn', wall ? 'Reposition <span class="k">M</span>' : 'Deploy to a wall');
+    move.disabled = hero.fallen;
     move.addEventListener('click', () => this.actions.deploy(hero.id));
     const refund = sim.heroes.refundValue(hero.id);
     const dismiss = h('button', 'btn danger', `Dismiss (+${refund} gold)`);
@@ -334,7 +406,14 @@ export class Hud {
       q('.v-xpbar').style.width = Number.isFinite(need) ? `${Math.min(100, (hero.xp / need) * 100).toFixed(1)}%` : '100%';
       q('.v-kills').textContent = hero.kills;
       const w = hero.wallId ? sim.walls.get(hero.wallId) : null;
-      q('.v-status').textContent = !w ? 'In reserve' : hero.moving > 0 ? `Moving (${fmt(hero.moving, 1)}s)` : `On wall ${w.x},${w.y}`;
+      q('.v-status').textContent = hero.fallen ? 'Fallen' : !w ? 'In reserve' : hero.moving > 0 ? `Moving (${fmt(hero.moving, 1)}s)` : `On wall ${w.x},${w.y}`;
+      if (hero.fallen && this.reviveBtn?.isConnected) {
+        const cost = sim.heroes.reviveCost(hero.id);
+        const ok = sim.heroes.canRevive(hero.id);
+        const rl = ok.reason === 'wave_active' ? `Revive (${cost} gold) after this wave` : `Revive for ${cost} gold`;
+        if (this.reviveBtn.innerHTML !== rl) this.reviveBtn.innerHTML = rl;
+        this.reviveBtn.disabled = !ok.ok;
+      }
       for (const { b, a } of abilBtns) {
         const cd = hero.abilityCooldowns[a.id] ?? 0;
         b.classList.toggle('cooling', cd > 0);
@@ -366,15 +445,16 @@ export class Hud {
     this.vHeroes.textContent = `${sim.heroes.deployedCount} / ${sim.heroes.count}`;
     // Reserve: recruited heroes not on a wall.
     const reserve = [...sim.heroes.all()].filter((x) => !x.wallId);
-    const key = reserve.map((r) => r.id).join(',');
+    const key = reserve.map((r) => `${r.id}${r.fallen ? 'f' : ''}`).join(',');
     if (key !== this.reserveKey) {
       this.reserveKey = key;
       this.reserve.hidden = !reserve.length;
       this.reserve.innerHTML = reserve.length ? '<span class="label">Reserve</span>' : '';
       for (const r of reserve) {
-        const chip = h('button', 'chip', `${r.name} <span>(${this.cfg.HEROES[r.type].name})</span>`);
-        chip.title = 'Click, then click a wall to deploy';
-        chip.addEventListener('click', () => this.actions.deploy(r.id));
+        const chip = h('button', `chip${r.fallen ? ' fallen' : ''}`,
+          `${r.name} <span>(${this.cfg.HEROES[r.type].name}${r.fallen ? ', fallen' : ''})</span>`);
+        chip.title = r.fallen ? 'Fallen: open to revive between waves' : 'Click, then click a wall to deploy';
+        chip.addEventListener('click', () => (r.fallen ? this.actions.select({ kind: 'hero', id: r.id }) : this.actions.deploy(r.id)));
         this.reserve.append(chip);
       }
     }
@@ -404,6 +484,28 @@ export class Hud {
     this.pauseBtn.textContent = paused ? '▶' : '❚❚';
     this.pauseBtn.classList.toggle('active', paused);
     this.speedBtns.forEach((b, i) => b.classList.toggle('active', this.actions.getSpeed() === i + 1));
+
+    // Boss health bar.
+    const boss = sim.zombies.bosses[0];
+    this.bossBar.hidden = !boss;
+    if (boss) {
+      const name = `${boss.elite ? 'Elite ' : ''}${this.cfg.ZOMBIES[boss.type].name}`;
+      const nameEl = this.bossBar.querySelector('.bname');
+      if (nameEl.textContent !== name) nameEl.textContent = name;
+      this.bossBar.querySelector('.bar > div').style.width = `${((boss.hp / boss.maxHp) * 100).toFixed(1)}%`;
+    }
+
+    // Upcoming wave preview during preparation.
+    let pv = '';
+    if (prep) {
+      const comp = w.preview();
+      const parts = comp.groups.map((g) => `${g.count} ${this.cfg.ZOMBIES[g.type].name}${g.count > 1 ? 's' : ''}`);
+      pv = `<span class="label">Next wave</span> ${parts.join(' · ')}`
+        + (comp.boss ? ` · <b class="boss">BOSS: ${this.cfg.ZOMBIES[comp.boss].name}</b>` : '')
+        + (comp.eliteChance ? ` · <span class="elite">elites ${Math.round(comp.eliteChance * 100)}%</span>` : '');
+    }
+    if (this.preview.innerHTML !== pv) this.preview.innerHTML = pv;
+    this.preview.hidden = !pv;
     this.dyn?.();
   }
 

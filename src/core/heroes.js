@@ -90,6 +90,8 @@ export class HeroSystem {
       targeting: t.defaultTargeting ?? 'threat',
       facing: Math.PI,
       kills: 0,
+      fallen: false,
+      lowWarned: false,
     };
     this.applyStats(hero);
     hero.hp = hero.maxHp;
@@ -103,6 +105,7 @@ export class HeroSystem {
     const h = this.get(heroId);
     const w = this.walls.get(wallId);
     if (!h) return { ok: false, reason: 'no_hero' };
+    if (h.fallen) return { ok: false, reason: 'fallen' };
     if (!w) return { ok: false, reason: 'no_wall' };
     if (h.wallId === wallId) return { ok: false, reason: 'already_there' };
     if (w.heroes.length >= w.heroCapacity) return { ok: false, reason: 'wall_full' };
@@ -146,6 +149,76 @@ export class HeroSystem {
     this.usedNames.delete(h.name);
     this.economy.earn(refund, `dismiss:${h.type}`);
     this.events.emit('heroDismissed', h);
+    return true;
+  }
+
+  // --- health, falling and revival ---------------------------------------
+  /**
+   * Damages a deployed hero. At 0 HP the hero falls: leaves the wall and waits in the
+   * reserve until revived for gold during a preparation phase. Never deleted.
+   */
+  damageHero(h, amount, source = null) {
+    if (!h || h.fallen || !h.wallId || !(amount > 0)) return 0;
+    const dealt = Math.min(h.hp, amount);
+    h.hp -= dealt;
+    this.events.emit('heroDamaged', { hero: h, amount: dealt, source });
+    if (!h.lowWarned && h.hp > 0 && h.hp / h.maxHp <= this.rules.lowHealthWarning) {
+      h.lowWarned = true;
+      this.events.emit('heroEndangered', h);
+    }
+    if (h.hp <= 0) {
+      const w = this.walls.get(h.wallId);
+      if (w) w.heroes.splice(w.heroes.indexOf(h.id), 1);
+      h.hp = 0;
+      h.fallen = true;
+      h.wallId = 0;
+      h.moving = 0;
+      h.targetId = 0;
+      this.events.emit('heroFell', h);
+    }
+    return dealt;
+  }
+
+  heal(h, amount) {
+    if (!h || h.fallen || !(amount > 0)) return;
+    h.hp = Math.min(h.maxHp, h.hp + amount);
+    if (h.hp / h.maxHp > this.rules.lowHealthWarning) h.lowWarned = false;
+  }
+
+  /** Restores every standing hero (between waves). */
+  healAll() {
+    for (const h of this.#heroes.values()) if (!h.fallen) { h.hp = h.maxHp; h.lowWarned = false; }
+  }
+
+  /** Set by the simulation: revival is only possible between waves. */
+  reviveAllowed = () => true;
+
+  reviveCost(heroId) {
+    const h = this.get(heroId);
+    return h?.fallen ? Math.ceil(h.invested * this.rules.reviveCostFactor) : 0;
+  }
+
+  /** @returns {{ok: true} | {ok: false, reason: string}} */
+  canRevive(heroId) {
+    const h = this.get(heroId);
+    if (!h?.fallen) return { ok: false, reason: 'not_fallen' };
+    if (!this.reviveAllowed()) return { ok: false, reason: 'wave_active' };
+    if (!this.economy.canAfford(this.reviveCost(heroId))) return { ok: false, reason: 'insufficient_gold' };
+    return { ok: true };
+  }
+
+  revive(heroId) {
+    const check = this.canRevive(heroId);
+    if (!check.ok) {
+      this.events.emit('actionRejected', { action: 'revive', reason: check.reason });
+      return false;
+    }
+    const h = this.get(heroId);
+    if (!this.economy.trySpend(this.reviveCost(heroId), `revive:${h.type}`)) return false;
+    h.fallen = false;
+    h.hp = h.maxHp;
+    h.lowWarned = false;
+    this.events.emit('heroRevived', h);
     return true;
   }
 

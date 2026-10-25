@@ -44,6 +44,7 @@ export function heroStats(t, level, talentIds = []) {
     wallGuard: t.wallGuard ? Math.min(0.8, grow(t.wallGuard, 0) + (g.wallGuard ?? 0) * L + (m.wallGuardAdd ?? 0)) : 0,
     guardAdjacent: !!m.guardAdjacent,
     repairPerSec: t.repairPerSec ? grow(t.repairPerSec, g.repair) * (m.repairMult ?? 1) : 0,
+    healPerSec: t.healPerSec ? grow(t.healPerSec, g.repair) * (m.repairMult ?? 1) : 0,
     auraRadius: t.auraRadius ?? 0,
     auraGuard: m.auraGuard ?? 0,
     cooldownMult: m.cooldownMult ?? 1,

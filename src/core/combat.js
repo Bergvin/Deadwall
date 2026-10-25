@@ -97,6 +97,12 @@ export class CombatSystem {
       if (w.hp >= w.maxHp) continue;
       if (R(w.x + 0.5 - pos.x, w.y + 0.5 - pos.z) <= r) w.hp = Math.min(w.maxHp, w.hp + h.stats.repairPerSec * dt);
     }
+    // The aura also tends to heroes (including the paladin).
+    for (const o of this.heroes.active()) {
+      if (o.hp >= o.maxHp) continue;
+      const p = this.heroes.positionOf(o);
+      if (R(p.x - pos.x, p.z - pos.z) <= r) this.heroes.heal(o, h.stats.healPerSec * dt);
+    }
   }
 
   #roll(h) {

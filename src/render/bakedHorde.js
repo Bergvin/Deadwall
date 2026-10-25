@@ -1,4 +1,4 @@
-// Draws a whole horde of one skinned model in a single instanced draw call.
+// Draws a whole horde of one skinned model with one instanced draw call per model part.
 // At load time every clip is sampled at BAKE_FPS and the skinned vertex positions and
 // normals are stored in float textures; the vertex shader then reads the right frame
 // per instance. CPU cost per zombie is one matrix write and one float per frame.
@@ -8,24 +8,21 @@ const BAKE_FPS = 30;
 const TEX_W = 4096;
 
 /**
+ * Bakes every skinned part of a model (body, face, weapon ...) into its own instanced mesh;
+ * all parts share one per-instance frame attribute, so they always animate in step.
  * @param {THREE.Object3D} root   prototype scene (already scaled; position/rotation are reset)
  * @param {THREE.AnimationClip[]} clips  clips to bake
  * @param {number} maxCount  instance capacity
- * @param {{castShadow?: boolean, meshName?: string}} opts
+ * @param {{castShadow?: boolean}} opts
  */
 export function createBakedHorde(root, clips, maxCount, opts = {}) {
   root.position.set(0, 0, 0);
   root.rotation.set(0, 0, 0);
   root.updateMatrixWorld(true);
 
-  let skinned = null;
-  root.traverse((o) => {
-    if (o.isSkinnedMesh && (!opts.meshName || o.name === opts.meshName)) skinned ??= o;
-  });
-  const geom = skinned.geometry;
-  const vCount = geom.attributes.position.count;
+  const parts = [];
+  root.traverse((o) => { if (o.isSkinnedMesh && o.visible) parts.push(o); });
 
-  // --- bake ---------------------------------------------------------------
   const clipInfo = {};
   let totalFrames = 0;
   for (const clip of clips) {
@@ -33,6 +30,51 @@ export function createBakedHorde(root, clips, maxCount, opts = {}) {
     clipInfo[clip.name] = { start: totalFrames, frames, duration: clip.duration };
     totalFrames += frames;
   }
+
+  const frameAttr = new THREE.InstancedBufferAttribute(new Float32Array(maxCount), 1);
+  frameAttr.setUsage(THREE.DynamicDrawUsage);
+  const group = new THREE.Group();
+  const meshes = parts.map((part) => bakePart(root, part, clips, clipInfo, totalFrames, frameAttr, maxCount, opts));
+  for (const m of meshes) group.add(m);
+
+  const m4 = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const sc = new THREE.Vector3();
+  const p = new THREE.Vector3();
+  const white = new THREE.Color(1, 1, 1);
+
+  return {
+    mesh: group,
+    meshes,
+    capacity: maxCount,
+    clipInfo,
+    bakedFrames: totalFrames,
+    hasClip: (name) => !!clipInfo[name],
+    /** Write instance i: position, facing (radians), clip, time (s), loop, tint, scale. */
+    set(i, x, y, z, rotY, clipName, time, loop = true, color = white, scale = 1) {
+      const c = clipInfo[clipName];
+      let f = Math.floor((time / c.duration) * c.frames);
+      f = loop ? ((f % c.frames) + c.frames) % c.frames : Math.min(f, c.frames - 1);
+      frameAttr.array[i] = c.start + f;
+      m4.compose(p.set(x, y, z), q.setFromAxisAngle(up, rotY), sc.setScalar(scale));
+      for (const m of meshes) { m.setMatrixAt(i, m4); m.setColorAt(i, color); }
+    },
+    /** Call once per frame after all set() calls. */
+    commit(count) {
+      frameAttr.needsUpdate = true;
+      for (const m of meshes) {
+        m.count = count;
+        m.instanceMatrix.needsUpdate = true;
+        m.instanceColor.needsUpdate = true;
+      }
+    },
+  };
+}
+
+function bakePart(root, skinned, clips, clipInfo, totalFrames, frameAttr, maxCount, opts) {
+  const geom = skinned.geometry;
+  const vCount = geom.attributes.position.count;
   const texH = Math.ceil((totalFrames * vCount) / TEX_W);
   const posData = new Float32Array(TEX_W * texH * 4);
   const nrmData = new Float32Array(TEX_W * texH * 4);
@@ -90,6 +132,8 @@ export function createBakedHorde(root, clips, maxCount, opts = {}) {
     }
     action.stop();
   }
+  mixer.stopAllAction();
+  mixer.uncacheRoot(root);
 
   const makeTex = (data) => {
     const t = new THREE.DataTexture(data, TEX_W, texH, THREE.RGBAFormat, THREE.FloatType);
@@ -99,7 +143,6 @@ export function createBakedHorde(root, clips, maxCount, opts = {}) {
   };
   const uniforms = { uPosTex: { value: makeTex(posData) }, uNrmTex: { value: makeTex(nrmData) } };
 
-  // --- material patch -----------------------------------------------------
   const header = /* glsl */ `
     uniform highp sampler2D uPosTex;
     uniform highp sampler2D uNrmTex;
@@ -109,6 +152,8 @@ export function createBakedHorde(root, clips, maxCount, opts = {}) {
       return ivec2(idx % ${TEX_W}, idx / ${TEX_W});
     }
   `;
+  // Vertex count is baked into the shader source, so it must be part of the cache key.
+  const key = `baked-${vCount}`;
   const patch = (mat, withNormals) => {
     mat.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
@@ -121,11 +166,11 @@ export function createBakedHorde(root, clips, maxCount, opts = {}) {
         );
       }
     };
-    mat.customProgramCacheKey = () => 'baked-horde';
+    mat.customProgramCacheKey = () => key;
     return mat;
   };
 
-  const src = skinned.material;
+  const src = Array.isArray(skinned.material) ? skinned.material[0] : skinned.material;
   const material = patch(new THREE.MeshLambertMaterial({ map: src.map, color: src.color }), true);
   const depthMaterial = patch(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }), false);
 
@@ -134,8 +179,6 @@ export function createBakedHorde(root, clips, maxCount, opts = {}) {
   g.setAttribute('position', geom.attributes.position); // only used for vertex count / bounds
   g.setAttribute('normal', geom.attributes.normal);
   g.setAttribute('uv', geom.attributes.uv);
-  const frameAttr = new THREE.InstancedBufferAttribute(new Float32Array(maxCount), 1);
-  frameAttr.setUsage(THREE.DynamicDrawUsage);
   g.setAttribute('aFrame', frameAttr);
 
   const mesh = new THREE.InstancedMesh(g, material, maxCount);
@@ -147,35 +190,5 @@ export function createBakedHorde(root, clips, maxCount, opts = {}) {
   mesh.count = 0;
   mesh.setColorAt(0, new THREE.Color(1, 1, 1)); // allocates per-instance tint
   mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
-
-  const m4 = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const up = new THREE.Vector3(0, 1, 0);
-  const one = new THREE.Vector3(1, 1, 1);
-  const p = new THREE.Vector3();
-  const white = new THREE.Color(1, 1, 1);
-
-  return {
-    mesh,
-    clipInfo,
-    bakedFrames: totalFrames,
-    vertexCount: vCount,
-    /** Write instance i: world position, facing (radians), clip name, time in seconds, tint. */
-    set(i, x, y, z, rotY, clipName, time, loop = true, color = white) {
-      const c = clipInfo[clipName];
-      let f = Math.floor((time / c.duration) * c.frames);
-      f = loop ? ((f % c.frames) + c.frames) % c.frames : Math.min(f, c.frames - 1);
-      frameAttr.array[i] = c.start + f;
-      m4.compose(p.set(x, y, z), q.setFromAxisAngle(up, rotY), one);
-      mesh.setMatrixAt(i, m4);
-      mesh.setColorAt(i, color);
-    },
-    /** Call once per frame after all set() calls. */
-    commit(count) {
-      mesh.count = count;
-      mesh.instanceMatrix.needsUpdate = true;
-      frameAttr.needsUpdate = true;
-      mesh.instanceColor.needsUpdate = true;
-    },
-  };
+  return mesh;
 }

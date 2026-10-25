@@ -17,6 +17,10 @@ export const HERO_RULES = {
   xpToNext: (level) => Math.round(30 * level ** 1.6),
   /** Ability point targets may be this far beyond the hero's attack range. */
   abilityRangeBonus: 1,
+  /** HP fraction at which a hero triggers a low-health warning. */
+  lowHealthWarning: 0.35,
+  /** Reviving a fallen hero costs this fraction of everything invested in it. */
+  reviveCostFactor: 0.35,
   names: ['Aldric', 'Brienne', 'Cedric', 'Daria', 'Edmund', 'Freya', 'Garrick', 'Helena',
     'Ivor', 'Johanna', 'Kendrick', 'Liora', 'Merek', 'Nessa', 'Osric', 'Rowena', 'Tobias', 'Wynn',
     'Alaric', 'Beatrix', 'Corwin', 'Elspeth', 'Godric', 'Isolde', 'Leofric', 'Maude', 'Percival', 'Sybil'],
@@ -211,6 +215,8 @@ export const HEROES = {
     critChance: 0.05, critMultiplier: 1.5,
     /** Walls within auraRadius regain this much HP per second (free). */
     repairPerSec: 2.5,
+    /** Heroes within auraRadius regain this much HP per second. */
+    healPerSec: 4,
     auraRadius: 2.5,
     growth: { damage: 0.06, hp: 0.1, repair: 0.1 },
     abilities: {

@@ -98,9 +98,42 @@ export function createJunctionPieces(wallProto) {
   return { junctionE: build(true, false), junctionW: build(false, true), cross: build(true, true) };
 }
 
+/** Per-type colour multiplied into the shared stone texture. */
+const TYPE_TINT = {
+  stone: [1, 1, 1],
+  reinforced: [0.72, 0.68, 0.64],
+  spiked: [0.92, 0.8, 0.68],
+  arcane: [0.55, 0.6, 0.9],
+};
+
+/** Shared decoration geometry and materials, created on first use. */
+let DECO = null;
+function deco() {
+  if (DECO) return DECO;
+  const spike = new THREE.ConeGeometry(0.055, 0.34, 6);
+  spike.rotateX(Math.PI / 2); // point along +z
+  const ring = new THREE.RingGeometry(0.96, 1, 48);
+  ring.rotateX(-Math.PI / 2);
+  DECO = {
+    band: new THREE.BoxGeometry(1.04, 0.07, 1.04),
+    trim: new THREE.BoxGeometry(1.03, 0.035, 1.03),
+    spike,
+    crystal: new THREE.OctahedronGeometry(0.11),
+    ring,
+    iron: new THREE.MeshLambertMaterial({ color: 0x2c2a28 }),
+    steel: new THREE.MeshLambertMaterial({ color: 0x8a8a90 }),
+    gold: new THREE.MeshBasicMaterial({ color: 0xd8a83c }),
+    rune: new THREE.MeshBasicMaterial({ color: 0x5aa8ff }),
+    aura: new THREE.MeshBasicMaterial({ color: 0x5aa8ff, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }),
+  };
+  return DECO;
+}
+
 export class WallView {
   /** id -> Object3D */
   #nodes = new Map();
+  /** "materialUuid:type" -> tinted material shared by all walls of that type */
+  #typeMats = new Map();
 
   /**
    * @param {THREE.Scene} scene
@@ -112,6 +145,7 @@ export class WallView {
     this.scene = scene;
     this.assets = assets;
     this.walls = walls;
+    this.time = 0;
     const j = createJunctionPieces(assets.proto('wallStraight'));
     assets.register('wallJunctionE', j.junctionE);
     assets.register('wallJunctionW', j.junctionW);
@@ -134,6 +168,7 @@ export class WallView {
       const node = this.#nodes.get(wall.id);
       if (node) this.#applyWear(node, wall);
     });
+    events.on('wallUpgraded', ({ wall }) => this.#rebuild(wall, true));
   }
 
   /** Meshes to raycast against for picking. Each piece has userData.wallId. */
@@ -152,19 +187,73 @@ export class WallView {
     }
   }
 
-  #rebuild(wall) {
-    const [model, rot, scaleY] = pieceFor(this.walls.connectionMask(wall.x, wall.y));
+  #typed(mat, type) {
+    const key = `${mat.uuid}:${type}`;
+    let m = this.#typeMats.get(key);
+    if (!m) {
+      m = mat.clone();
+      m.color.setRGB(...TYPE_TINT[type]);
+      this.#typeMats.set(key, m);
+    }
+    return m;
+  }
+
+  #rebuild(wall, force = false) {
+    const mask = this.walls.connectionMask(wall.x, wall.y);
     const current = this.#nodes.get(wall.id);
-    if (current?.userData.model === model && current.rotation.y === rot) return;
+    if (!force && current?.userData.mask === mask) return;
+    const [model, rot, scaleY] = pieceFor(mask);
     this.#drop(wall.id);
     const node = this.assets.instance(model);
     node.position.set(wall.x + 0.5, 0, wall.y + 0.5);
     node.rotation.y = rot;
     node.scale.y *= scaleY;
-    node.userData = { wallId: wall.id, model, shake: 0, worn: null };
+    node.traverse((o) => { if (o.isMesh) o.material = this.#typed(o.material, wall.type); });
+    node.userData = { wallId: wall.id, model, mask, shake: 0, worn: null, crystal: null, aura: null };
+    this.#decorate(node, wall, mask, rot);
     this.group.add(node);
     this.#nodes.set(wall.id, node);
     if (wall.hp < wall.maxHp) this.#applyWear(node, wall);
+  }
+
+  /** Type and level decorations, in a child group counter-rotated to world axes. */
+  #decorate(node, wall, mask, rot) {
+    const d = deco();
+    const g = new THREE.Group();
+    g.rotation.y = -rot;
+    const add = (geom, mat, x, y, z, ry = 0) => {
+      const m = new THREE.Mesh(geom, mat);
+      m.position.set(x, y, z);
+      m.rotation.y = ry;
+      m.castShadow = true;
+      g.add(m);
+      return m;
+    };
+    if (wall.type === 'reinforced') {
+      add(d.band, d.iron, 0, 0.32, 0);
+      add(d.band, d.iron, 0, 0.82, 0);
+    } else if (wall.type === 'spiked') {
+      // Spikes on every face that does not join another wall, pointing outward.
+      const faces = [[DIR.N, 0, -1], [DIR.E, 1, 0], [DIR.S, 0, 1], [DIR.W, -1, 0]];
+      for (const [bit, fx, fz] of faces) {
+        if (mask & bit) continue;
+        for (const t of [-0.3, 0, 0.3]) {
+          for (const y of [0.35, 0.7]) {
+            add(d.spike, d.steel, fx * 0.56 + fz * t, y, fz * 0.56 + fx * t, Math.atan2(fx, fz));
+          }
+        }
+      }
+    } else if (wall.type === 'arcane') {
+      add(d.band, d.rune, 0, 0.6, 0);
+      node.userData.crystal = add(d.crystal, d.rune, 0, 1.45, 0);
+      const aura = add(d.ring, d.aura, 0, 0.03, 0);
+      aura.castShadow = false;
+      aura.scale.setScalar(wall.arcane.radius);
+      aura.raycast = () => {}; // never pickable
+      node.userData.aura = aura;
+    }
+    for (let i = 1; i < wall.level; i++) add(d.trim, d.gold, 0, 1.0 + i * 0.06, 0);
+    node.add(g);
   }
 
   /**
@@ -177,19 +266,31 @@ export class WallView {
       if (ratio >= 1) return;
       node.userData.worn = [];
       node.traverse((o) => {
-        if (!o.isMesh) return;
+        if (!o.isMesh || !this.#isTyped(o.material)) return;
         o.material = o.material.clone();
         node.userData.worn.push(o.material);
       });
     }
     const k = 1 - ratio;
-    for (const m of node.userData.worn) m.color.setRGB(1 - 0.55 * k, 1 - 0.62 * k, 1 - 0.66 * k);
+    const [r, gr, b] = TYPE_TINT[wall.type];
+    for (const m of node.userData.worn) m.color.setRGB(r * (1 - 0.55 * k), gr * (1 - 0.62 * k), b * (1 - 0.66 * k));
   }
 
-  /** Hit shake; call every frame with real dt. */
+  #isTyped(mat) {
+    for (const m of this.#typeMats.values()) if (m === mat) return true;
+    return false;
+  }
+
+  /** Hit shake and arcane animation; call every frame with real dt. */
   update(dt) {
+    this.time += dt;
     for (const node of this.#nodes.values()) {
       const u = node.userData;
+      if (u.crystal) {
+        u.crystal.position.y = 1.45 + Math.sin(this.time * 2 + u.wallId) * 0.05;
+        u.crystal.rotation.y += dt * 1.5;
+        u.aura.material.opacity = 0.25 + 0.12 * Math.sin(this.time * 3);
+      }
       if (u.shake <= 0) continue;
       u.shake = Math.max(0, u.shake - dt);
       const w = this.walls.get(u.wallId);
@@ -209,6 +310,8 @@ export class WallView {
 
   dispose() {
     for (const id of [...this.#nodes.keys()]) this.#drop(id);
+    for (const m of this.#typeMats.values()) m.dispose();
+    this.#typeMats.clear();
     this.group.parent?.remove(this.group);
   }
 }
