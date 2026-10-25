@@ -1,0 +1,30 @@
+{
+  "name": "deadwall",
+  "version": "1.0.0",
+  "description": "DEADWALL - isometric zombie fortress survival",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test tests/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Bergvin/Deadwall.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Bergvin/Deadwall/issues"
+  },
+  "homepage": "https://github.com/Bergvin/Deadwall#readme",
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.7"
+  },
+  "private": true
+}
