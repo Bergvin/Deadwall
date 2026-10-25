@@ -4,11 +4,8 @@ import * as THREE from 'three';
 import { DIR } from '../core/walls.js';
 
 const R90 = Math.PI / 2;
-// Measured with a downward raycast: wall walkway top is at 1.18, tower-square-base top at
-// 1.01. Junction blocks are stretched so their top is flush with the walkways.
+// Wall walkway top, measured with a downward raycast on wall.glb.
 const WALKWAY_HEIGHT = 1.18;
-const TOWER_BASE_HEIGHT = 1.01;
-const JUNCTION_SCALE_Y = WALKWAY_HEIGHT / TOWER_BASE_HEIGHT;
 
 /**
  * Picks [modelName, rotationY, scaleY] for a connection mask.
@@ -29,7 +26,74 @@ export function pieceFor(mask) {
     if (n && e) return ['wallCorner', 2 * R90, 1];
     return ['wallCorner', 3 * R90, 1]; // w && n
   }
-  return ['towerBase', 0, JUNCTION_SCALE_Y]; // T-junctions and crossings
+  // Junctions (see createJunctionPieces). Junction pieces are straight walls with the rim
+  // removed on the joined side: local +x maps to world E at rotation 0 and to world N at 90.
+  if (count === 4) return ['wallCross', 0, 1];
+  if (!s) return ['wallJunctionE', R90, 1]; // N+E+W: through E-W, branch N (local +x)
+  if (!n) return ['wallJunctionW', R90, 1]; // E+S+W: through E-W, branch S (local -x)
+  if (!w) return ['wallJunctionE', 0, 1]; // N+E+S: through N-S, branch E (local +x)
+  return ['wallJunctionW', 0, 1]; // N+S+W: through N-S, branch W (local -x)
+}
+
+// The straight wall (rotation 0) runs north-south with a battlement rim on each long side,
+// occupying x in [RIM_INNER_X, 0.5] (and its mirror) above the walkway.
+const RIM_INNER_X = 0.29;
+
+/**
+ * Builds junction pieces from the straight wall so their faces, colours and battlements
+ * match exactly. In the straight wall's own frame (runs N-S, rims on local +x and -x) a
+ * junction removes the rim on each side where another wall joins and fills that strip with
+ * walkway, leaving open floor where walls meet and keeping battlements on open sides.
+ * Returns prototypes: junctionE (local +x rim removed), junctionW (-x removed), cross (both).
+ * @param {THREE.Object3D} wallProto  the straight wall prototype
+ */
+export function createJunctionPieces(wallProto) {
+  let mesh = null;
+  wallProto.traverse((o) => { if (o.isMesh) mesh ??= o; });
+  const src = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
+  const { position: pos, normal: nrm, uv } = src.attributes;
+
+  let walkwayUv = null;
+  for (let i = 0; i < pos.count && !walkwayUv; i++) {
+    if (Math.abs(pos.getY(i) - WALKWAY_HEIGHT) < 0.01 && nrm.getY(i) > 0.9) walkwayUv = [uv.getX(i), uv.getY(i)];
+  }
+
+  const build = (removeE, removeW) => {
+    const P = [], N = [], U = [];
+    for (let t = 0; t < pos.count; t += 3) {
+      let minX = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let k = t; k < t + 3; k++) {
+        minX = Math.min(minX, pos.getX(k)); maxX = Math.max(maxX, pos.getX(k)); maxY = Math.max(maxY, pos.getY(k));
+      }
+      const aboveWalkway = maxY > WALKWAY_HEIGHT + 0.001;
+      if (aboveWalkway && removeE && minX >= RIM_INNER_X - 0.01) continue;
+      if (aboveWalkway && removeW && maxX <= -RIM_INNER_X + 0.01) continue;
+      for (let k = t; k < t + 3; k++) {
+        P.push(pos.getX(k), pos.getY(k), pos.getZ(k));
+        N.push(nrm.getX(k), nrm.getY(k), nrm.getZ(k));
+        U.push(uv.getX(k), uv.getY(k));
+      }
+    }
+    // Walkway filler where a rim was removed (two triangles, facing up).
+    const fill = (x0, x1) => {
+      const y = WALKWAY_HEIGHT;
+      for (const [x, z] of [[x0, -0.5], [x0, 0.5], [x1, 0.5], [x0, -0.5], [x1, 0.5], [x1, -0.5]]) {
+        P.push(x, y, z); N.push(0, 1, 0); U.push(...walkwayUv);
+      }
+    };
+    if (removeE) fill(RIM_INNER_X - 0.01, 0.5);
+    if (removeW) fill(-0.5, -RIM_INNER_X + 0.01);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+    const m = new THREE.Mesh(g, mesh.material);
+    m.castShadow = m.receiveShadow = true;
+    const root = new THREE.Group();
+    root.add(m);
+    return root;
+  };
+  return { junctionE: build(true, false), junctionW: build(false, true), cross: build(true, true) };
 }
 
 export class WallView {
@@ -46,6 +110,10 @@ export class WallView {
     this.scene = scene;
     this.assets = assets;
     this.walls = walls;
+    const j = createJunctionPieces(assets.proto('wallStraight'));
+    assets.register('wallJunctionE', j.junctionE);
+    assets.register('wallJunctionW', j.junctionW);
+    assets.register('wallCross', j.cross);
     this.group = new THREE.Group();
     this.group.name = 'walls';
     scene.add(this.group);

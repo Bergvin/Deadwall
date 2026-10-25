@@ -31,7 +31,12 @@ test('pieceFor picks straight, corner and junction pieces', () => {
   assert.equal(pieceFor(DIR.E | DIR.S)[1], R);
   assert.equal(pieceFor(DIR.N | DIR.E)[1], 2 * R);
   assert.equal(pieceFor(DIR.W | DIR.N)[1], 3 * R);
-  assert.equal(pieceFor(DIR.N | DIR.E | DIR.S)[0], 'towerBase');
+  assert.equal(pieceFor(DIR.N | DIR.E | DIR.S | DIR.W)[0], 'wallCross');
+  // T-junctions: the removed rim (local +x = E at rot 0, N at rot 90) faces the branch.
+  assert.deepEqual(pieceFor(DIR.N | DIR.E | DIR.W), ['wallJunctionE', R, 1]);
+  assert.deepEqual(pieceFor(DIR.E | DIR.S | DIR.W), ['wallJunctionW', R, 1]);
+  assert.deepEqual(pieceFor(DIR.N | DIR.E | DIR.S), ['wallJunctionE', 0, 1]);
+  assert.deepEqual(pieceFor(DIR.N | DIR.S | DIR.W), ['wallJunctionW', 0, 1]);
 });
 
 test('axisLock keeps drags on the dominant axis', async () => {

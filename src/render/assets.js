@@ -26,6 +26,12 @@ export class AssetLibrary {
     }));
   }
 
+  /** Adds a prototype built in code (e.g. generated pieces) under `name`. */
+  register(name, root) {
+    this.#protos.set(name, root);
+    this.#clips.set(name, []);
+  }
+
   /** Prototype (do not add to the scene directly). */
   proto(name) {
     const p = this.#protos.get(name);
