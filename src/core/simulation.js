@@ -9,6 +9,8 @@ import { Fortress } from './fortress.js';
 import { ZombieSystem } from './zombies.js';
 import { HeroSystem } from './heroes.js';
 import { ProjectileSystem } from './projectiles.js';
+import { ZoneSystem } from './zones.js';
+import { CombatSystem } from './combat.js';
 import { WaveSystem, PHASE } from './waves.js';
 import { createRng } from './rng.js';
 
@@ -32,10 +34,17 @@ export class Simulation {
       grid: this.grid, walls: this.walls, fortress: this.fortress, economy: this.economy,
       events: this.events, rng: this.rng, types: c.ZOMBIES, pathing: c.PATHING,
     });
-    this.projectiles = new ProjectileSystem({ zombies: this.zombies, events: this.events });
     this.heroes = new HeroSystem({
-      walls: this.walls, zombies: this.zombies, projectiles: this.projectiles, economy: this.economy,
+      walls: this.walls, zombies: this.zombies, economy: this.economy,
       events: this.events, rng: this.rng, types: c.HEROES, rules: c.HERO_RULES, economyConfig: c.ECONOMY,
+    });
+    this.zones = new ZoneSystem({ zombies: this.zombies, events: this.events });
+    this.projectiles = new ProjectileSystem({
+      zombies: this.zombies, onImpact: (p, z, x, zz) => this.combat.impact(p, z, x, zz),
+    });
+    this.combat = new CombatSystem({
+      heroes: this.heroes, zombies: this.zombies, walls: this.walls, projectiles: this.projectiles,
+      zones: this.zones, events: this.events, rng: this.rng, types: c.HEROES, rules: c.HERO_RULES,
     });
     this.waves = new WaveSystem({
       zombies: this.zombies, economy: this.economy, events: this.events, rng: this.rng,
@@ -44,6 +53,7 @@ export class Simulation {
 
     // Cross-system rules.
     this.walls.priceMultiplier = () => (this.waves.phase === PHASE.ACTIVE ? c.ECONOMY.combatBuildMultiplier : 1);
+    this.walls.damageModifier = (w) => this.combat.wallDamageMultiplier(w);
     this.walls.placementBlocker = (x, y) => (this.zombies.cellCount[this.grid.index(x, y)] ? 'enemy_present' : null);
 
     const ev = this.events;
@@ -73,8 +83,9 @@ export class Simulation {
     this.time += dt;
     this.waves.step(dt);
     this.zombies.step(dt);
-    this.heroes.step(dt, this.time);
+    this.combat.step(dt);
     this.projectiles.step(dt);
+    this.zones.step(dt);
   }
 
   /** Runs whole seconds of simulation (tests and balance runs). */

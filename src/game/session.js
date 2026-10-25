@@ -9,6 +9,7 @@ import { zombieCostFn } from '../core/walls.js';
 import { WallView } from '../render/wallView.js';
 import { HeroView } from '../render/heroView.js';
 import { healthColor } from '../render/healthBars.js';
+import { FX_COLORS } from '../render/fx.js';
 import { Interaction } from '../input/interaction.js';
 import { Hud } from '../ui/hud.js';
 
@@ -31,6 +32,7 @@ export class Session {
       build: (type) => this.input.enterBuild(type),
       recruit: (type) => this.recruit(type),
       deploy: (heroId) => this.input.enterDeploy(heroId),
+      useAbility: (heroId, id) => this.input.useAbility(heroId, id),
       startWave: () => sim.waves.startNext(),
       togglePause: () => shared.togglePause(),
       setSpeed: (s) => { loop.speed = s; },
@@ -66,9 +68,37 @@ export class Session {
 
   /** Visual and text feedback for simulation events. */
   #wireFeedback() {
-    const { effects, floaters, gateNode } = this.shared;
+    const { effects, floaters, gateNode, fx } = this.shared;
     const ev = this.sim.events;
-    ev.on('zombieDamaged', ({ zombie, amount, crit }) => {
+    const CLASS_COLOR = { archer: 0x9fd86a, mage: 0xb57aff, warrior: 0xf0e6d0, crossbowman: 0x9fe8ff, paladin: 0xffe08a, alchemist: 0x7cff5a };
+    ev.on('impactFx', ({ x, z, radius, fx: kind }) => {
+      const color = FX_COLORS[kind.split('-')[0]] ?? FX_COLORS.hit;
+      if (radius > 0) fx.ring(x, z, radius, color, kind.endsWith('small') ? 0.35 : 0.6);
+      const big = !kind.endsWith('small') && radius > 1;
+      effects.burst({ x, y: 0.4, z }, {
+        count: big ? 24 : 6, color, size: big ? 0.1 : 0.06, speed: big ? 2.5 : 1.2, up: big ? 2.5 : 1.5,
+        life: big ? 0.9 : 0.5, spread: Math.min(1, radius),
+      });
+    });
+    ev.on('abilityUsed', ({ hero }) => {
+      const p = this.sim.heroes.positionOf(hero);
+      if (p) fx.ring(p.x, p.z, 0.8, CLASS_COLOR[hero.type] ?? 0xffffff, 0.4, 1.25);
+    });
+    ev.on('meleeHit', ({ target, holy, crit }) => {
+      effects.burst({ x: target.x, y: 0.7, z: target.z }, {
+        count: crit ? 8 : 4, color: holy ? FX_COLORS.holy : 0xd8d0c0, size: 0.06, speed: 1.4, up: 1.2, life: 0.35, spread: 0.2,
+      });
+    });
+    ev.on('heroLevelUp', (hero) => {
+      const p = this.sim.heroes.positionOf(hero);
+      if (!p) return;
+      floaters.spawn({ x: p.x, y: 2.4, z: p.z }, `Level ${hero.level}!`, 'level');
+      fx.ring(p.x, p.z, 1.2, FX_COLORS.level, 0.8, 1.25);
+      effects.burst({ x: p.x, y: 1.8, z: p.z }, { count: 16, color: FX_COLORS.level, size: 0.06, speed: 1, up: 2.5, life: 0.9, spread: 0.3 });
+    });
+    ev.on('zombieDamaged', ({ zombie, amount, crit, dot }) => {
+      if (dot) return; // damage over time is shown by the zombie's tint, not numbers
+
       floaters.spawn({ x: zombie.x, y: 1.1, z: zombie.z }, crit ? `${Math.round(amount)}!` : `${Math.round(amount)}`, crit ? 'crit' : 'dmg');
       effects.burst({ x: zombie.x, y: 0.6, z: zombie.z }, { count: crit ? 6 : 3, color: 0x6a1a14, size: 0.06, speed: 1, up: 1.5, life: 0.5, spread: 0.2 });
     });
@@ -110,9 +140,10 @@ export class Session {
 
   /** Per-frame rendering sync (real time, independent of game speed). */
   frame(realDt) {
-    const { zombieView, projectileView, effects, bars, floaters, cam, canvas, gateNode } = this.shared;
+    const { zombieView, projectileView, effects, bars, floaters, cam, canvas, gateNode, fx } = this.shared;
     const sim = this.sim;
-    zombieView.sync(sim.zombies.list);
+    zombieView.sync(sim.zombies.list, sim.zombies.time);
+    fx.update(realDt, sim.time, sim.zones.list, sim.walls.all());
     projectileView.sync(sim.projectiles.list);
     this.wallView.update(realDt);
     this.heroView.update(this.shared.loop.paused ? 0 : realDt * this.shared.loop.speed, sim.walls);
@@ -157,6 +188,7 @@ export class Session {
     s.zombieView.clear();
     s.projectileView.sync([]);
     s.effects.clear();
+    s.fx.clear();
     s.floaters.clear();
     s.bars.begin(s.cam.camera);
     s.bars.end();

@@ -27,6 +27,30 @@ export const MODELS = {
   trunk: { url: '/models/graveyard/trunk.glb' },
 
   // Characters (phase 2+)
-  archer: { url: '/models/heroes/Ranger.gltf', fit: { axis: 'y', size: 0.9 } },
+  // Heroes. anims maps roles to clip names: idle, ready (has a target), attack, cast, walk.
+  archer: {
+    url: '/models/heroes/Ranger.gltf', fit: { axis: 'y', size: 0.9 },
+    anims: { idle: 'Idle', ready: 'Idle_Attacking', attack: 'Bow_Shoot', cast: 'Bow_Draw', walk: 'Walk' },
+  },
+  mage: {
+    url: '/models/heroes/Wizard.gltf', fit: { axis: 'y', size: 0.9 },
+    anims: { idle: 'Idle', ready: 'Idle_Attacking', attack: 'Staff_Attack', cast: 'Spell1', walk: 'Walk' },
+  },
+  warrior: {
+    url: '/models/heroes/Warrior.gltf', fit: { axis: 'y', size: 0.95 },
+    anims: { idle: 'Idle', ready: 'Idle_Attacking', attack: 'Sword_Attack', cast: 'Sword_Attack2', walk: 'Walk' },
+  },
+  crossbowman: {
+    url: '/models/heroes/Rogue.gltf', fit: { axis: 'y', size: 0.9 },
+    anims: { idle: 'Idle', ready: 'Attacking_Idle', attack: 'Punch', cast: 'Dagger_Attack2', walk: 'Walk' },
+  },
+  paladin: {
+    url: '/models/heroes/Cleric.gltf', fit: { axis: 'y', size: 0.95 },
+    anims: { idle: 'Idle', ready: 'Idle_Weapon', attack: 'Staff_Attack', cast: 'Spell1', walk: 'Walk' },
+  },
+  alchemist: {
+    url: '/models/heroes/Monk.gltf', fit: { axis: 'y', size: 0.9 },
+    anims: { idle: 'Idle', ready: 'Idle_Attacking', attack: 'Attack', cast: 'Attack2', walk: 'Walk' },
+  },
   walker: { url: '/models/zombies/Zombie_Basic.gltf', fit: { axis: 'y', size: 0.85 } },
 };

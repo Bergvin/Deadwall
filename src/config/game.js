@@ -44,7 +44,10 @@ export const ZOMBIES = {
   walker: {
     name: 'Walker',
     hp: 60,
+    /** Fraction of physical damage ignored (armor penetration lowers it). */
     armor: 0,
+    /** Fraction of magic damage ignored (holy ignores it). */
+    resist: 0,
     speed: 0.6,
     wallDamage: 12,
     attackInterval: 1.2,
@@ -56,35 +59,8 @@ export const ZOMBIES = {
   },
 };
 
-/**
- * Hero classes. Phase 2 implements the Archer; the rest arrive in phase 3.
- * range is in cells; attackInterval in seconds; projectileSpeed in cells per second.
- */
-export const HEROES = {
-  archer: {
-    name: 'Archer',
-    role: 'Fast ranged damage',
-    description: 'Fast, long-ranged arrows. Strong vs Walkers and Runners, weak vs armor.',
-    cost: 80,
-    hp: 100,
-    damage: 14,
-    attackInterval: 0.75,
-    range: 6.5,
-    projectileSpeed: 16,
-    critChance: 0.1,
-    critMultiplier: 2,
-    model: 'archer',
-  },
-};
-
-export const HERO_RULES = {
-  /** Seconds a hero spends walking to a new wall when repositioned (cannot attack meanwhile). */
-  repositionTime: 3,
-  /** XP per point of damage dealt (kill XP is added on top). */
-  xpPerDamage: 0.2,
-  names: ['Aldric', 'Brienne', 'Cedric', 'Daria', 'Edmund', 'Freya', 'Garrick', 'Helena',
-    'Ivor', 'Johanna', 'Kendrick', 'Liora', 'Merek', 'Nessa', 'Osric', 'Rowena', 'Tobias', 'Wynn'],
-};
+// Hero classes, rules and targeting modes live in heroes.js.
+export { HEROES, HERO_RULES, TARGETING } from './heroes.js';
 
 export const WAVES = {
   /** Seconds before wave 1 starts on its own (the player can start it earlier). */

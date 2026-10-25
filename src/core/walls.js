@@ -28,6 +28,8 @@ export class WallSystem {
     this.priceMultiplier = () => 1;
     /** Extra placement blocker, e.g. enemies standing in the cell. Returns a reason or null. */
     this.placementBlocker = () => null;
+    /** Multiplier on incoming damage for a wall (guards, buffs). Set by the simulation. */
+    this.damageModifier = () => 1;
   }
 
   get(id) {
@@ -88,6 +90,8 @@ export class WallSystem {
       invested: type.cost,
       heroCapacity: type.heroCapacity,
       heroes: [],
+      /** Timed damage reductions: {reduction, until, kind}. */
+      buffs: [],
     };
     this.#walls.set(wall.id, wall);
     this.grid.wallId[this.grid.index(x, y)] = wall.id;
@@ -96,10 +100,11 @@ export class WallSystem {
     return wall;
   }
 
-  /** Applies damage; destroys the wall at 0 HP. Returns the damage actually dealt. */
+  /** Applies damage (after guards and buffs); destroys the wall at 0 HP. Returns damage dealt. */
   damage(id, amount, source = null) {
     const w = this.get(id);
     if (!w || !(amount > 0)) return 0;
+    amount *= this.damageModifier(w);
     const dealt = Math.min(w.hp, amount);
     w.hp -= dealt;
     this.events.emit('wallDamaged', { wall: w, amount: dealt, source });

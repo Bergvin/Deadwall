@@ -14,6 +14,8 @@ const CORPSE_TIME = 1.6;
 const SPREAD = 0.28;
 /** How far into its own cell a zombie stands when hitting the neighbouring wall/gate. */
 const STRIKE_REACH = 0.32;
+/** Seconds between damage-over-time ticks. */
+const DOT_TICK = 0.5;
 
 export class ZombieSystem {
   #nextId = 1;
@@ -30,6 +32,7 @@ export class ZombieSystem {
     this.fieldDirty = true;
     this.field = null;
     this.killCount = 0;
+    this.time = 0;
     events.on('wallAdded', () => { this.fieldDirty = true; });
     events.on('wallRemoved', () => { this.fieldDirty = true; });
   }
@@ -69,6 +72,11 @@ export class ZombieSystem {
       x, z,
       hp, maxHp: hp,
       armor: t.armor,
+      resist: t.resist ?? 0,
+      slowUntil: 0, slowFactor: 1,
+      stunUntil: 0,
+      /** Damage-over-time effects: {dps, until, ownerId, type, timer}. */
+      dots: [],
       speed: t.speed * this.rng.range(0.9, 1.1),
       wallDamage: t.wallDamage,
       attackInterval: t.attackInterval,
@@ -94,15 +102,20 @@ export class ZombieSystem {
   }
 
   /**
-   * Deals damage to a zombie (after armor). Death, gold and XP happen exactly once.
+   * Deals damage after mitigation: physical is reduced by armor (minus armor penetration),
+   * magic by resist; holy and poison ignore both. Death, gold and XP happen exactly once.
+   * @param {{type?: 'physical'|'magic'|'holy'|'poison'|'fire', armorPen?: number, crit?: boolean, dot?: boolean}} opts
    * @returns {number} damage dealt
    */
-  damage(z, amount, sourceHeroId = 0, { crit = false } = {}) {
+  damage(z, amount, sourceHeroId = 0, { type = 'physical', armorPen = 0, crit = false, dot = false } = {}) {
     if (!z.alive || !(amount > 0)) return 0;
-    const dealt = Math.min(z.hp, Math.max(1, amount - z.armor));
+    let mult = 1;
+    if (type === 'physical') mult = 1 - Math.max(0, z.armor - armorPen);
+    else if (type === 'magic' || type === 'fire') mult = 1 - z.resist;
+    const dealt = Math.min(z.hp, Math.max(1, amount * mult));
     z.hp -= dealt;
     if (sourceHeroId) z.contributors.set(sourceHeroId, (z.contributors.get(sourceHeroId) ?? 0) + dealt);
-    this.events.emit('zombieDamaged', { zombie: z, amount: dealt, crit, sourceHeroId });
+    this.events.emit('zombieDamaged', { zombie: z, amount: dealt, crit, dot, type, sourceHeroId });
     if (z.hp <= 0) this.#kill(z, sourceHeroId);
     return dealt;
   }
@@ -117,7 +130,46 @@ export class ZombieSystem {
     this.events.emit('zombieKilled', { zombie: z, killerId });
   }
 
+  /** Slows movement to `factor` of normal speed; the strongest active slow wins. */
+  applySlow(z, factor, duration) {
+    if (!z.alive) return;
+    if (this.time >= z.slowUntil || factor <= z.slowFactor) z.slowFactor = factor;
+    z.slowUntil = Math.max(z.slowUntil, this.time + duration);
+  }
+
+  /** Stunned zombies neither move nor attack. */
+  applyStun(z, duration) {
+    if (!z.alive) return;
+    z.stunUntil = Math.max(z.stunUntil, this.time + duration);
+    this.events.emit('zombieStunned', { zombie: z, duration });
+  }
+
+  /** Adds damage over time. Re-applying the same type from the same hero refreshes it. */
+  addDot(z, { dps, duration, ownerId = 0, type = 'poison' }) {
+    if (!z.alive || !(dps > 0)) return;
+    const existing = z.dots.find((d) => d.ownerId === ownerId && d.type === type);
+    if (existing) {
+      existing.dps = Math.max(existing.dps, dps);
+      existing.until = Math.max(existing.until, this.time + duration);
+      return;
+    }
+    z.dots.push({ dps, until: this.time + duration, ownerId, type, timer: DOT_TICK });
+  }
+
+  #stepDots(z, dt) {
+    for (let i = z.dots.length - 1; i >= 0 && z.alive; i--) {
+      const d = z.dots[i];
+      d.timer -= dt;
+      if (d.timer <= 0) {
+        d.timer += DOT_TICK;
+        this.damage(z, d.dps * DOT_TICK, d.ownerId, { type: d.type === 'poison' ? 'poison' : d.type, dot: true });
+      }
+      if (this.time >= d.until) z.dots.splice(i, 1);
+    }
+  }
+
   step(dt) {
+    this.time += dt;
     if (this.fieldDirty || !this.field) this.#refreshField();
     const g = this.grid;
     this.cellCount.fill(0);
@@ -130,7 +182,9 @@ export class ZombieSystem {
         if (z.deadTime < CORPSE_TIME) this.list[write++] = z;
         continue;
       }
-      this.#stepZombie(z, dt);
+      if (z.dots.length) this.#stepDots(z, dt);
+      if (!z.alive) { this.list[write++] = z; continue; }
+      if (this.time >= z.stunUntil) this.#stepZombie(z, dt);
       const cx = Math.floor(z.x), cy = Math.floor(z.z);
       if (g.inBounds(cx, cy)) this.cellCount[g.index(cx, cy)]++;
       this.list[write++] = z;
@@ -176,7 +230,8 @@ export class ZombieSystem {
   #moveToward(z, tx, tz, dt) {
     const dx = tx - z.x, dz = tz - z.z;
     const d = Math.hypot(dx, dz);
-    const stepLen = z.speed * dt;
+    const slow = this.time < z.slowUntil ? z.slowFactor : 1;
+    const stepLen = z.speed * slow * dt;
     if (d <= stepLen || d < 1e-4) {
       z.x = tx; z.z = tz;
       return true;

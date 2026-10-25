@@ -145,32 +145,37 @@ export function createBakedHorde(root, clips, maxCount, opts = {}) {
   mesh.receiveShadow = !!opts.castShadow;
   mesh.frustumCulled = false; // instances cover the whole map anyway
   mesh.count = 0;
+  mesh.setColorAt(0, new THREE.Color(1, 1, 1)); // allocates per-instance tint
+  mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
 
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const one = new THREE.Vector3(1, 1, 1);
   const p = new THREE.Vector3();
+  const white = new THREE.Color(1, 1, 1);
 
   return {
     mesh,
     clipInfo,
     bakedFrames: totalFrames,
     vertexCount: vCount,
-    /** Write instance i: world position, facing (radians), clip name and time in seconds. */
-    set(i, x, y, z, rotY, clipName, time, loop = true) {
+    /** Write instance i: world position, facing (radians), clip name, time in seconds, tint. */
+    set(i, x, y, z, rotY, clipName, time, loop = true, color = white) {
       const c = clipInfo[clipName];
       let f = Math.floor((time / c.duration) * c.frames);
       f = loop ? ((f % c.frames) + c.frames) % c.frames : Math.min(f, c.frames - 1);
       frameAttr.array[i] = c.start + f;
       m4.compose(p.set(x, y, z), q.setFromAxisAngle(up, rotY), one);
       mesh.setMatrixAt(i, m4);
+      mesh.setColorAt(i, color);
     },
     /** Call once per frame after all set() calls. */
     commit(count) {
       mesh.count = count;
       mesh.instanceMatrix.needsUpdate = true;
       frameAttr.needsUpdate = true;
+      mesh.instanceColor.needsUpdate = true;
     },
   };
 }

@@ -81,7 +81,8 @@ test('archer on a wall shoots walkers; projectiles hit once each', () => {
   assert.ok(sim.heroes.deploy(hero.id, wall.id));
   const z = sim.zombies.spawn('walker', 15.5, 10.5, 3); // 180 hp
   let hits = 0;
-  sim.events.on('projectileHit', () => hits++);
+  const impact = sim.combat.impact.bind(sim.combat);
+  sim.combat.impact = (...args) => { hits++; impact(...args); };
   const dealt = [];
   sim.events.on('zombieDamaged', ({ amount }) => dealt.push(amount));
   sim.run(20);

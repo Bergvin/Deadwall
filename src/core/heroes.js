@@ -1,23 +1,24 @@
-// Hero recruitment, deployment on walls, repositioning, dismissal, targeting and attacks.
+// Hero roster: recruitment, deployment on walls, repositioning, dismissal, experience,
+// levels, talents and targeting preferences. Combat itself lives in combat.js.
 // A hero is either in reserve (wallId 0), walking to a wall (moving > 0) or deployed.
+import { heroStats } from './heroStats.js';
 
 export class HeroSystem {
   #heroes = new Map();
   #nextId = 1;
 
-  /**
-   * @param {{walls, zombies, projectiles, economy, events, rng, types, rules, economyConfig}} deps
-   */
-  constructor({ walls, zombies, projectiles, economy, events, rng, types, rules, economyConfig }) {
-    Object.assign(this, { walls, zombies, projectiles, economy, events, rng, types, rules, economyConfig });
+  /** @param {{walls, zombies, economy, events, rng, types, rules, economyConfig}} deps */
+  constructor({ walls, zombies, economy, events, rng, types, rules, economyConfig }) {
+    Object.assign(this, { walls, zombies, economy, events, rng, types, rules, economyConfig });
     this.usedNames = new Set();
-    // A destroyed wall drops its heroes back into reserve so they can be redeployed.
+    // A destroyed or sold wall drops its heroes back into reserve so they can be redeployed.
     events.on('wallRemoved', ({ wall, cause }) => {
       for (const id of [...wall.heroes]) {
         const h = this.get(id);
         if (!h) continue;
         h.wallId = 0;
         h.moving = 0;
+        h.targetId = 0;
         this.events.emit('heroUnseated', { hero: h, cause });
       }
       wall.heroes.length = 0;
@@ -34,11 +35,24 @@ export class HeroSystem {
     return n;
   }
 
+  /** Deployed, arrived heroes (able to act). */
+  *active() {
+    for (const h of this.#heroes.values()) if (h.wallId && h.moving <= 0) yield h;
+  }
+
   #pickName() {
     const free = this.rules.names.filter((n) => !this.usedNames.has(n));
     const name = free.length ? this.rng.pick(free) : `${this.rng.pick(this.rules.names)} ${this.#nextId}`;
     this.usedNames.add(name);
     return name;
+  }
+
+  /** Recomputes derived stats after a level or talent change, keeping the HP ratio. */
+  applyStats(h) {
+    const ratio = h.maxHp ? h.hp / h.maxHp : 1;
+    h.stats = heroStats(this.types[h.type], h.level, h.talents);
+    h.maxHp = h.stats.maxHp;
+    h.hp = Math.round(h.maxHp * ratio);
   }
 
   canRecruit(typeKey) {
@@ -62,22 +76,23 @@ export class HeroSystem {
       type: typeKey,
       name: this.#pickName(),
       level: 1,
-      xp: 0,
-      hp: t.hp, maxHp: t.hp,
-      damage: t.damage,
-      attackInterval: t.attackInterval,
-      range: t.range,
-      critChance: t.critChance,
-      critMultiplier: t.critMultiplier,
+      xp: 0, // progress toward the next level
+      totalXp: 0,
+      talents: [],
+      hp: 0, maxHp: 0,
+      stats: null,
       invested: t.cost,
       wallId: 0,
-      moving: 0, // seconds left walking to the assigned wall
+      moving: 0,
       cooldown: 0,
+      abilityCooldowns: {},
       targetId: 0,
-      facing: Math.PI, // face north
-      lastAttackAt: -1,
+      targeting: t.defaultTargeting ?? 'threat',
+      facing: Math.PI,
       kills: 0,
     };
+    this.applyStats(hero);
+    hero.hp = hero.maxHp;
     this.#heroes.set(hero.id, hero);
     this.events.emit('heroRecruited', hero);
     return hero;
@@ -134,49 +149,66 @@ export class HeroSystem {
     return true;
   }
 
-  /** World position (x, z) of a deployed hero: the centre of its wall cell. */
-  positionOf(h) {
-    const w = this.walls.get(h.wallId);
-    return w ? { x: w.x + 0.5, z: w.y + 0.5 } : null;
+  setTargeting(heroId, mode) {
+    const h = this.get(heroId);
+    if (h) { h.targeting = mode; h.targetId = 0; }
   }
 
-  /** Default targeting: the living zombie in range that is closest to the gate by path. */
-  pickTarget(h, pos) {
-    let best = null, bestDist = Infinity;
-    for (const z of this.zombies.inRange(pos.x, pos.z, h.range)) {
-      const d = this.zombies.threatDistance(z);
-      if (d < bestDist) { bestDist = d; best = z; }
-    }
-    return best;
+  // --- experience and upgrades -------------------------------------------
+  xpToNext(h) {
+    return h.level >= this.rules.maxLevel ? Infinity : this.rules.xpToNext(h.level);
   }
 
-  step(dt, simTime) {
-    for (const h of this.#heroes.values()) {
-      if (!h.wallId) continue;
-      if (h.moving > 0) { h.moving = Math.max(0, h.moving - dt); continue; }
-      h.cooldown = Math.max(0, h.cooldown - dt);
-      const pos = this.positionOf(h);
-      let target = this.zombies.list.find((z) => z.id === h.targetId && z.alive) ?? null;
-      if (target && Math.hypot(target.x - pos.x, target.z - pos.z) > h.range) target = null;
-      if (!target) target = this.pickTarget(h, pos);
-      h.targetId = target ? target.id : 0;
-      if (!target) continue;
-      h.facing = Math.atan2(target.x - pos.x, target.z - pos.z);
-      if (h.cooldown > 0) continue;
-      h.cooldown = h.attackInterval;
-      h.lastAttackAt = simTime;
-      const crit = this.rng.next() < h.critChance;
-      this.projectiles.fire({
-        ownerId: h.id,
-        kind: 'arrow',
-        from: { x: pos.x, y: 1.9, z: pos.z },
-        target,
-        speed: this.types[h.type].projectileSpeed,
-        damage: h.damage * (crit ? h.critMultiplier : 1),
-        crit,
-      });
-      this.events.emit('heroAttack', { hero: h, target });
+  addXp(h, amount) {
+    if (!(amount > 0) || h.level >= this.rules.maxLevel) return;
+    h.xp += amount;
+    h.totalXp += amount;
+    while (h.level < this.rules.maxLevel && h.xp >= this.xpToNext(h)) {
+      h.xp -= this.xpToNext(h);
+      h.level++;
+      this.applyStats(h);
+      h.hp = h.maxHp; // a level-up restores the hero
+      this.events.emit('heroLevelUp', h);
     }
+    if (h.level >= this.rules.maxLevel) h.xp = 0;
+  }
+
+  /** Talent tiers with availability for this hero. */
+  talentTiers(h) {
+    return this.types[h.type].talents.map((tier, i) => ({
+      index: i,
+      ...tier,
+      chosen: tier.options.find((o) => h.talents.includes(o.id))?.id ?? null,
+      unlocked: h.level >= tier.level,
+    }));
+  }
+
+  /** @returns {{ok: true} | {ok: false, reason: string}} */
+  canBuyTalent(heroId, tierIndex, optionId) {
+    const h = this.get(heroId);
+    const tier = h && this.types[h.type].talents[tierIndex];
+    if (!h || !tier) return { ok: false, reason: 'no_talent' };
+    if (!tier.options.some((o) => o.id === optionId)) return { ok: false, reason: 'no_talent' };
+    if (tier.options.some((o) => h.talents.includes(o.id))) return { ok: false, reason: 'tier_taken' };
+    if (h.level < tier.level) return { ok: false, reason: 'level_too_low' };
+    if (!this.economy.canAfford(tier.cost)) return { ok: false, reason: 'insufficient_gold' };
+    return { ok: true };
+  }
+
+  buyTalent(heroId, tierIndex, optionId) {
+    const check = this.canBuyTalent(heroId, tierIndex, optionId);
+    if (!check.ok) {
+      this.events.emit('actionRejected', { action: 'talent', reason: check.reason });
+      return false;
+    }
+    const h = this.get(heroId);
+    const tier = this.types[h.type].talents[tierIndex];
+    if (!this.economy.trySpend(tier.cost, `talent:${optionId}`)) return false;
+    h.talents.push(optionId);
+    h.invested += tier.cost;
+    this.applyStats(h);
+    this.events.emit('talentBought', { hero: h, talentId: optionId });
+    return true;
   }
 
   /** Gives XP to heroes that damaged a dead zombie, split by damage share. */
@@ -186,8 +218,30 @@ export class HeroSystem {
     if (!total) return;
     for (const [id, dmg] of zombie.contributors) {
       const h = this.get(id);
-      if (!h) continue;
-      h.xp += zombie.xp * (dmg / total) + dmg * this.rules.xpPerDamage;
+      if (h) this.addXp(h, zombie.xp * (dmg / total) + dmg * this.rules.xpPerDamage);
     }
+  }
+
+  // --- position and targeting --------------------------------------------
+  /** World position (x, z) of a deployed hero: the centre of its wall cell. */
+  positionOf(h) {
+    const w = this.walls.get(h.wallId);
+    return w ? { x: w.x + 0.5, z: w.y + 0.5 } : null;
+  }
+
+  /** Picks a target in range according to the hero's targeting preference. */
+  pickTarget(h, pos, range = h.stats.range) {
+    let best = null, bestScore = Infinity;
+    for (const z of this.zombies.inRange(pos.x, pos.z, range)) {
+      let score;
+      switch (h.targeting) {
+        case 'nearest': score = Math.hypot(z.x - pos.x, z.z - pos.z); break;
+        case 'strongest': score = -z.hp; break;
+        case 'weakest': score = z.hp; break;
+        default: score = this.zombies.threatDistance(z);
+      }
+      if (score < bestScore) { bestScore = score; best = z; }
+    }
+    return best;
   }
 }

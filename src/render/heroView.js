@@ -1,13 +1,13 @@
 // Deployed heroes as animated skinned models standing on their wall, plus an invisible
-// hit box per hero for picking.
+// hit box per hero for picking. Animation roles per model come from config/assets.js.
 import * as THREE from 'three';
+import { MODELS } from '../config/assets.js';
 
 /** Height of the wall walkway the heroes stand on. */
 const WALKWAY_Y = 1.18;
-const ANIM = { idle: 'Idle', ready: 'Idle_Attacking', shoot: 'Bow_Shoot', walk: 'Walk' };
 
 export class HeroView {
-  /** id -> { root, mixer, actions, hitbox, shotAt } */
+  /** id -> { root, mixer, actions, hitbox, base } */
   #nodes = new Map();
 
   constructor(scene, assets, heroes, events, heroTypes) {
@@ -20,7 +20,8 @@ export class HeroView {
     this.hitMat = new THREE.MeshBasicMaterial({ visible: false });
     this.hitGeom = new THREE.CylinderGeometry(0.3, 0.3, 1, 8);
     this.hitGeom.translate(0, 0.5, 0);
-    events.on('heroAttack', ({ hero }) => this.#playShot(hero.id));
+    events.on('heroAttack', ({ hero }) => this.#playOnce(hero.id, 'attack', hero.stats.attackInterval * 0.9));
+    events.on('abilityUsed', ({ hero }) => this.#playOnce(hero.id, 'cast', 0.9));
     events.on('heroDismissed', (h) => this.#drop(h.id));
   }
 
@@ -34,13 +35,14 @@ export class HeroView {
     const mixer = new THREE.AnimationMixer(root);
     const clips = this.assets.clips(model);
     const actions = {};
-    for (const [k, name] of Object.entries(ANIM)) {
+    for (const [role, name] of Object.entries(MODELS[model].anims ?? {})) {
       const clip = clips.find((c) => c.name === name);
-      if (clip) actions[k] = mixer.clipAction(clip);
-    }
-    if (actions.shoot) {
-      actions.shoot.setLoop(THREE.LoopOnce, 1);
-      actions.shoot.clampWhenFinished = false;
+      if (!clip) continue;
+      actions[role] = mixer.clipAction(clip);
+      if (role === 'attack' || role === 'cast') {
+        actions[role].setLoop(THREE.LoopOnce, 1);
+        actions[role].clampWhenFinished = false;
+      }
     }
     actions.idle?.play();
     const hitbox = new THREE.Mesh(this.hitGeom, this.hitMat);
@@ -53,31 +55,22 @@ export class HeroView {
   }
 
   #setBase(node, key) {
-    if (node.base === key || !node.actions[key]) return;
+    if (!node.actions[key]) key = 'idle';
+    if (node.base === key) return;
     node.actions[node.base]?.fadeOut(0.2);
-    node.actions[key].reset().fadeIn(0.2).play();
+    node.actions[key]?.reset().fadeIn(0.2).play();
     node.base = key;
   }
 
-  #playShot(id) {
-    const node = this.#nodes.get(id);
-    const a = node?.actions.shoot;
+  /** Plays a one-shot clip, sped up to fit inside `maxSeconds` if needed. */
+  #playOnce(id, role, maxSeconds) {
+    const a = this.#nodes.get(id)?.actions[role];
     if (!a) return;
-    // Fit the shot animation inside the attack interval so it never lags behind.
-    const hero = this.heroes.get(id);
-    a.timeScale = Math.max(1, a.getClip().duration / Math.max(0.2, hero.attackInterval * 0.9));
+    a.timeScale = Math.max(1, a.getClip().duration / Math.max(0.2, maxSeconds));
     a.reset().setEffectiveWeight(1).play();
   }
 
-  #drop(id) {
-    const node = this.#nodes.get(id);
-    if (!node) return;
-    node.mixer.stopAllAction();
-    this.group.remove(node.root);
-    this.#nodes.delete(id);
-  }
-
-  /** Syncs nodes with hero state and advances animations by real frame time. */
+  /** Syncs nodes with hero state and advances animations by `dt` (scaled game time). */
   update(dt, walls) {
     for (const h of this.heroes.all()) {
       const w = h.wallId ? walls.get(h.wallId) : null;
@@ -95,8 +88,22 @@ export class HeroView {
     }
   }
 
+  /** World position of a hero model (for effects), or null. */
+  positionOf(id) {
+    const n = this.#nodes.get(id);
+    return n?.root.visible ? n.root.position : null;
+  }
+
   dispose() {
     for (const id of [...this.#nodes.keys()]) this.#drop(id);
     this.group.parent?.remove(this.group);
+  }
+
+  #drop(id) {
+    const node = this.#nodes.get(id);
+    if (!node) return;
+    node.mixer.stopAllAction();
+    this.group.remove(node.root);
+    this.#nodes.delete(id);
   }
 }

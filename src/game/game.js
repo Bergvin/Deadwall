@@ -15,6 +15,7 @@ import { Overlay } from '../render/overlay.js';
 import { ZombieView } from '../render/zombieView.js';
 import { ProjectileView } from '../render/projectileView.js';
 import { Effects } from '../render/effects.js';
+import { Fx } from '../render/fx.js';
 import { HealthBars } from '../render/healthBars.js';
 import { FloatingText } from '../ui/floatingText.js';
 import { Screens } from '../ui/screens.js';
@@ -43,6 +44,7 @@ export class Game {
     this.zombieView = new ZombieView(scene, this.assets, ZOMBIES);
     this.projectileView = new ProjectileView(scene);
     this.effects = new Effects(scene);
+    this.fx = new Fx(scene);
     this.bars = new HealthBars(scene);
     this.floaters = new FloatingText(document.body);
     this.gateNode = world.gate;
@@ -84,7 +86,7 @@ export class Game {
     this.session = new Session({
       scene: this.scene, canvas: this.renderer.domElement, cam: this.cam, assets: this.assets,
       overlay: this.overlay, zombieView: this.zombieView, projectileView: this.projectileView,
-      effects: this.effects, bars: this.bars, floaters: this.floaters, gateNode: this.gateNode,
+      effects: this.effects, fx: this.fx, bars: this.bars, floaters: this.floaters, gateNode: this.gateNode,
       loop: this.loop, seed, togglePause: () => this.togglePause(),
       onGameOver: (summary) => this.gameOver(summary),
     });

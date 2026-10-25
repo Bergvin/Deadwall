@@ -161,8 +161,42 @@ export class Overlay {
     for (let i = items.length; i < this.slots.length; i++) this.slots[i].visible = false;
   }
 
+  /**
+   * Ability targeting preview: a ring showing the hero's reach and a disc for the effect
+   * area at the cursor (green = valid, red = invalid). Pass null to hide.
+   * @param {{reachCenter:{x,z}, reach:number, at?:{x,z}, radius?:number, valid:boolean}|null} p
+   */
+  setAbilityPreview(p) {
+    if (!this.abilityReach) {
+      const ring = new THREE.RingGeometry(0.97, 1, 64);
+      ring.rotateX(-Math.PI / 2);
+      this.abilityReach = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({
+        color: 0xf0e6c8, transparent: true, opacity: 0.55, depthTest: false,
+      }));
+      const disc = new THREE.CircleGeometry(1, 48);
+      disc.rotateX(-Math.PI / 2);
+      this.abilityArea = new THREE.Mesh(disc, new THREE.MeshBasicMaterial({
+        transparent: true, opacity: 0.28, depthTest: false, depthWrite: false,
+      }));
+      this.abilityReach.renderOrder = this.abilityArea.renderOrder = 13;
+      this.root.add(this.abilityReach, this.abilityArea);
+    }
+    this.abilityReach.visible = !!p;
+    this.abilityArea.visible = !!p?.at;
+    if (!p) return;
+    this.abilityReach.position.set(p.reachCenter.x, 0.07, p.reachCenter.z);
+    this.abilityReach.scale.setScalar(p.reach);
+    if (p.at) {
+      const r = Math.max(0.35, p.radius ?? 0.35);
+      this.abilityArea.position.set(p.at.x, 0.08, p.at.z);
+      this.abilityArea.scale.set(r, 1, r);
+      this.abilityArea.material.color.set(p.valid ? COLORS.valid : COLORS.invalid);
+    }
+  }
+
   /** Hides every transient marker (used when a run ends). */
   reset() {
+    this.setAbilityPreview(null);
     this.setGhosts([]);
     this.setHeroSlots([]);
     this.setHover(null);

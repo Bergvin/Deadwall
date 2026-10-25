@@ -19,6 +19,14 @@ export const REJECT_TEXT = {
   wall_full: 'That wall has no free hero slot',
   already_there: 'The hero is already there',
   no_wall: 'Pick a wall',
+  cooldown: 'Ability is recharging',
+  locked: 'Ability not unlocked yet',
+  out_of_range: 'Out of range',
+  no_target: 'No valid target',
+  not_deployed: 'Deploy the hero on a wall first',
+  moving: 'The hero is still moving',
+  tier_taken: 'Already chose a talent in that tier',
+  level_too_low: 'Hero level too low',
 };
 
 export class Interaction {
@@ -29,6 +37,7 @@ export class Interaction {
     Object.assign(this, { canvas, cam, sim, wallView, heroView, overlay, hud, cameraCfg });
     this.walls = sim.walls;
     this.heroes = sim.heroes;
+    this.combat = sim.combat;
     this.mode = { kind: 'select' };
     this.selection = null; // { kind: 'wall' | 'hero', id }
     this.hoverCell = null;
@@ -66,6 +75,7 @@ export class Interaction {
     this.mode = mode;
     this.placing = null;
     this.overlay.setGridVisible(mode.kind === 'build');
+    this.overlay.setAbilityPreview(null);
     this.hud.setMode(mode);
     this.#refreshHover();
   }
@@ -81,6 +91,57 @@ export class Interaction {
     this.#setMode({ kind: 'deploy', heroId });
   }
 
+  /**
+   * Activates a hero ability. Abilities without a target fire at once; others enter a
+   * targeting mode with a reach/area preview until the player clicks or cancels.
+   */
+  useAbility(heroId, abilityId) {
+    const h = this.heroes.get(heroId);
+    const a = h && this.combat.abilityConfig(h, abilityId);
+    if (!a) return;
+    if (a.target === 'none') {
+      const res = this.combat.use(heroId, abilityId);
+      if (!res.ok) this.hud.toast(REJECT_TEXT[res.reason] ?? 'Cannot use that now');
+      return;
+    }
+    const pre = this.combat.canUse(heroId, abilityId, null);
+    if (!pre.ok && pre.reason !== 'no_target') { this.hud.toast(REJECT_TEXT[pre.reason] ?? 'Cannot use that now'); return; }
+    this.#setMode({ kind: 'ability', heroId, abilityId });
+  }
+
+  /** Target object for the current ability mode at a cursor position. */
+  #abilityTarget(clientX, clientY) {
+    const { heroId, abilityId } = this.mode;
+    const h = this.heroes.get(heroId);
+    const a = this.combat.abilityConfig(h, abilityId);
+    const p = this.cam.groundPoint(clientX, clientY);
+    if (!p) return null;
+    if (a.target === 'point') return { x: p.x, z: p.z };
+    if (a.target === 'enemy') {
+      let best = null, bd = 1.2;
+      for (const z of this.sim.zombies.list) {
+        if (!z.alive) continue;
+        const d = Math.hypot(z.x - p.x, z.z - p.z);
+        if (d < bd) { bd = d; best = z; }
+      }
+      return best ? { zombieId: best.id, x: best.x, z: best.z } : { x: p.x, z: p.z };
+    }
+    if (a.target === 'wall') {
+      const w = this.wallAt(clientX, clientY) ?? this.walls.at(Math.floor(p.x), Math.floor(p.z));
+      return w ? { wallId: w.id, x: w.x + 0.5, z: w.y + 0.5 } : { x: p.x, z: p.z };
+    }
+    return null;
+  }
+
+  #abilityAt(clientX, clientY) {
+    const { heroId, abilityId } = this.mode;
+    const target = this.#abilityTarget(clientX, clientY);
+    const res = this.combat.use(heroId, abilityId, target);
+    if (!res.ok) { this.hud.toast(REJECT_TEXT[res.reason] ?? 'Cannot use that there'); return; }
+    this.#setMode({ kind: 'select' });
+    this.select({ kind: 'hero', id: heroId });
+  }
+
   cancel() {
     if (this.placing) {
       this.placing = null;
@@ -93,6 +154,8 @@ export class Interaction {
   }
 
   select(sel) {
+    // Selecting a different hero ends targeting for the previous one.
+    if (this.mode.kind === 'ability' && !(sel?.kind === 'hero' && sel.id === this.mode.heroId)) this.#setMode({ kind: 'select' });
     this.selection = sel;
     const w = sel?.kind === 'wall' ? this.walls.get(sel.id) : null;
     const h = sel?.kind === 'hero' ? this.heroes.get(sel.id) : null;
@@ -190,6 +253,8 @@ export class Interaction {
       this.#refreshHover();
     } else if (this.mode.kind === 'deploy') {
       this.#deployAt(e.clientX, e.clientY);
+    } else if (this.mode.kind === 'ability') {
+      this.#abilityAt(e.clientX, e.clientY);
     } else {
       const h = this.heroAt(e.clientX, e.clientY);
       if (h) { this.select({ kind: 'hero', id: h.id }); return; }
@@ -244,6 +309,14 @@ export class Interaction {
       case 'KeyM':
         if (sel?.kind === 'hero') this.enterDeploy(sel.id);
         break;
+      case 'KeyQ': case 'KeyE': case 'KeyF': {
+        if (sel?.kind !== 'hero') return;
+        const h = this.heroes.get(sel.id);
+        const ids = Object.keys(this.sim.config.HEROES[h.type].abilities);
+        const id = ids[{ KeyQ: 0, KeyE: 1, KeyF: 2 }[e.code]];
+        if (id) this.useAbility(h.id, id);
+        break;
+      }
       default: return;
     }
     e.preventDefault();
@@ -275,6 +348,21 @@ export class Interaction {
     this.overlay.setGhosts([]);
     this.hud.setPlan(null);
     const p = this.lastPointer;
+    if (this.mode.kind === 'ability') {
+      const h = this.heroes.get(this.mode.heroId);
+      const pos = h && this.heroes.positionOf(h);
+      if (!pos) { this.#setMode({ kind: 'select' }); return; }
+      const target = p ? this.#abilityTarget(p.x, p.y) : null;
+      const valid = !!target && this.combat.canUse(h.id, this.mode.abilityId, target).ok;
+      this.overlay.setHover(null);
+      this.overlay.setAbilityPreview({
+        reachCenter: pos, reach: this.combat.abilityReach(h, this.mode.abilityId),
+        at: target ? { x: target.x, z: target.z } : null,
+        radius: this.combat.abilityRadius(h, this.mode.abilityId), valid,
+      });
+      this.canvas.style.cursor = valid ? 'crosshair' : 'not-allowed';
+      return;
+    }
     if (this.mode.kind === 'deploy') {
       const w = p ? this.wallAt(p.x, p.y) : null;
       this.overlay.setHover(w ? { x: w.x, y: w.y } : null);
