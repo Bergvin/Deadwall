@@ -18,7 +18,7 @@ test('lineCells is 4-connected and inclusive', () => {
 });
 
 test('pieceFor picks straight, corner and junction pieces', () => {
-  assert.deepEqual(pieceFor(0), ['wallPillar', 0]);
+  assert.deepEqual(pieceFor(0), ['wallPillar', 0, 1]);
   assert.equal(pieceFor(DIR.N | DIR.S)[0], 'wallStraight');
   assert.equal(pieceFor(DIR.E | DIR.W)[1], Math.PI / 2);
   assert.equal(pieceFor(DIR.E)[0], 'wallStraight');

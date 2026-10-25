@@ -201,8 +201,8 @@ export class Interaction {
       this.overlay.setGhosts(plan.map(({ cell: c, valid }) => {
         const mask = (has(c.x, c.y - 1) ? DIR.N : 0) | (has(c.x + 1, c.y) ? DIR.E : 0)
           | (has(c.x, c.y + 1) ? DIR.S : 0) | (has(c.x - 1, c.y) ? DIR.W : 0);
-        const [model, rot] = pieceFor(mask);
-        return { cell: c, model, rot, valid };
+        const [model, rot, scaleY] = pieceFor(mask);
+        return { cell: c, model, rot, scaleY, valid };
       }));
       const ok = plan.filter((p) => p.valid).length;
       this.hud.setPlan(this.placing && plan.length > 1

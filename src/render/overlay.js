@@ -116,11 +116,11 @@ export class Overlay {
   /**
    * Shows placement ghosts; pass [] to hide them all. Ghost objects are pooled per
    * model and validity, so dragging a long line does not allocate every frame.
-   * @param {{cell:{x:number,y:number}, model:string, rot:number, valid:boolean}[]} items
+   * @param {{cell:{x:number,y:number}, model:string, rot:number, scaleY?:number, valid:boolean}[]} items
    */
   setGhosts(items) {
     const used = {};
-    for (const { cell, model, rot, valid } of items) {
+    for (const { cell, model, rot, scaleY = 1, valid } of items) {
       const key = `${model}:${valid}`;
       const pool = (this.ghosts[key] ??= []);
       const i = (used[key] = (used[key] ?? 0) + 1) - 1;
@@ -132,6 +132,7 @@ export class Overlay {
       g.visible = true;
       g.position.set(cell.x + 0.5, 0, cell.y + 0.5);
       g.rotation.y = rot;
+      g.scale.y = scaleY;
     }
     for (const [key, pool] of Object.entries(this.ghosts)) {
       for (let i = used[key] ?? 0; i < pool.length; i++) pool[i].visible = false;

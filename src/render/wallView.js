@@ -4,24 +4,32 @@ import * as THREE from 'three';
 import { DIR } from '../core/walls.js';
 
 const R90 = Math.PI / 2;
+// Measured with a downward raycast: wall walkway top is at 1.18, tower-square-base top at
+// 1.01. Junction blocks are stretched so their top is flush with the walkways.
+const WALKWAY_HEIGHT = 1.18;
+const TOWER_BASE_HEIGHT = 1.01;
+const JUNCTION_SCALE_Y = WALKWAY_HEIGHT / TOWER_BASE_HEIGHT;
 
-/** Picks [modelName, rotationY] for a connection mask. See config/assets.js for orientation. */
+/**
+ * Picks [modelName, rotationY, scaleY] for a connection mask.
+ * See config/assets.js for piece orientation.
+ */
 export function pieceFor(mask) {
   const n = !!(mask & DIR.N), e = !!(mask & DIR.E), s = !!(mask & DIR.S), w = !!(mask & DIR.W);
   const count = n + e + s + w;
-  if (count === 0) return ['wallPillar', 0];
+  if (count === 0) return ['wallPillar', 0, 1];
   if (count === 1 || (count === 2 && ((n && s) || (e && w)))) {
-    return ['wallStraight', n || s ? 0 : R90];
+    return ['wallStraight', n || s ? 0 : R90, 1];
   }
   if (count === 2) {
     // Corner at rotation 0 connects S+W (verified top-down); each +90deg turns the pair
     // counter-clockwise seen from above: S+W -> E+S -> N+E -> W+N.
-    if (s && w) return ['wallCorner', 0];
-    if (e && s) return ['wallCorner', R90];
-    if (n && e) return ['wallCorner', 2 * R90];
-    return ['wallCorner', 3 * R90]; // w && n
+    if (s && w) return ['wallCorner', 0, 1];
+    if (e && s) return ['wallCorner', R90, 1];
+    if (n && e) return ['wallCorner', 2 * R90, 1];
+    return ['wallCorner', 3 * R90, 1]; // w && n
   }
-  return ['towerBase', 0]; // T-junctions and crossings
+  return ['towerBase', 0, JUNCTION_SCALE_Y]; // T-junctions and crossings
 }
 
 export class WallView {
@@ -61,13 +69,14 @@ export class WallView {
   }
 
   #rebuild(wall) {
-    const [model, rot] = pieceFor(this.walls.connectionMask(wall.x, wall.y));
+    const [model, rot, scaleY] = pieceFor(this.walls.connectionMask(wall.x, wall.y));
     const current = this.#nodes.get(wall.id);
     if (current?.userData.model === model && current.rotation.y === rot) return;
     this.#drop(wall.id);
     const node = this.assets.instance(model);
     node.position.set(wall.x + 0.5, 0, wall.y + 0.5);
     node.rotation.y = rot;
+    node.scale.y *= scaleY;
     node.userData = { wallId: wall.id, model };
     this.group.add(node);
     this.#nodes.set(wall.id, node);
