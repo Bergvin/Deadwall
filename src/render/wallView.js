@@ -14,11 +14,12 @@ export function pieceFor(mask) {
     return ['wallStraight', n || s ? 0 : R90];
   }
   if (count === 2) {
-    // Corner at rotation 0 connects E+S; each +90deg turns the pair counter-clockwise.
-    if (e && s) return ['wallCorner', 0];
-    if (n && e) return ['wallCorner', R90];
-    if (w && n) return ['wallCorner', 2 * R90];
-    return ['wallCorner', 3 * R90]; // s && w
+    // Corner at rotation 0 connects S+W (verified top-down); each +90deg turns the pair
+    // counter-clockwise seen from above: S+W -> E+S -> N+E -> W+N.
+    if (s && w) return ['wallCorner', 0];
+    if (e && s) return ['wallCorner', R90];
+    if (n && e) return ['wallCorner', 2 * R90];
+    return ['wallCorner', 3 * R90]; // w && n
   }
   return ['towerBase', 0]; // T-junctions and crossings
 }

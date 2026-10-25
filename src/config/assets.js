@@ -3,7 +3,7 @@
 // Kenney castle/graveyard pieces are authored at 1 unit per cell, so they need no fit.
 
 export const MODELS = {
-  // Castle kit (rotation 0: straight wall runs north-south; corner connects east + south)
+  // Castle kit (rotation 0: straight wall runs north-south; corner connects south + west)
   wallStraight: { url: '/models/kenney/wall.glb' },
   wallCorner: { url: '/models/kenney/wall-corner.glb' },
   wallPillar: { url: '/models/kenney/wall-pillar.glb' },

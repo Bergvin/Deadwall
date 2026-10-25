@@ -25,6 +25,12 @@ test('pieceFor picks straight, corner and junction pieces', () => {
   const corners = [DIR.E | DIR.S, DIR.N | DIR.E, DIR.W | DIR.N, DIR.S | DIR.W].map(pieceFor);
   assert.ok(corners.every(([m]) => m === 'wallCorner'));
   assert.equal(new Set(corners.map(([, r]) => r)).size, 4, 'each corner has its own rotation');
+  // Orientation verified top-down in the game: rotation 0 connects S+W, then CCW steps.
+  const R = Math.PI / 2;
+  assert.equal(pieceFor(DIR.S | DIR.W)[1], 0);
+  assert.equal(pieceFor(DIR.E | DIR.S)[1], R);
+  assert.equal(pieceFor(DIR.N | DIR.E)[1], 2 * R);
+  assert.equal(pieceFor(DIR.W | DIR.N)[1], 3 * R);
   assert.equal(pieceFor(DIR.N | DIR.E | DIR.S)[0], 'towerBase');
 });
 
