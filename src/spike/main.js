@@ -1,8 +1,10 @@
 // Phase 0 spike: verifies Three.js + model loading + animated horde performance.
-// Query params: ?n=200 (zombie count), ?shadows=0, ?yaw=45 (camera yaw in degrees).
+// Query params: ?n=200 (zombie count), ?shadows=0, ?yaw=0, ?pitch=55 (camera angles in degrees),
+// ?horde=skinned (one SkinnedMesh per zombie instead of the baked instanced horde).
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { createBakedHorde } from './bakedHorde.js';
 
 const params = new URLSearchParams(location.search);
 const MAP_W = 30;
@@ -10,6 +12,7 @@ const MAP_H = 24;
 const WALL_ROW = 17; // z of the defensive line (north is -z)
 let zombieCount = Number(params.get('n') ?? 200);
 let yawDeg = Number(params.get('yaw') ?? 0);
+let pitchDeg = Number(params.get('pitch') ?? 55);
 const useShadows = params.get('shadows') !== '0';
 
 // --- renderer / scene ---------------------------------------------------
@@ -22,7 +25,10 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x15161a);
-scene.fog = new THREE.Fog(0x15161a, 30, 60);
+// Camera sits CAMERA_DIST from the map center, so fog starts just past the center and only
+// dims the far (north) side of the map.
+const CAMERA_DIST = 50;
+scene.fog = new THREE.Fog(0x15161a, CAMERA_DIST + 4, CAMERA_DIST + 30);
 
 const center = new THREE.Vector3(MAP_W / 2, 0, MAP_H / 2);
 const camera = new THREE.OrthographicCamera();
@@ -36,10 +42,10 @@ function updateCamera() {
   camera.bottom = -viewSize / 2;
   camera.near = 0.1;
   camera.far = 200;
-  // Classic isometric pitch (35.264 deg) at the chosen yaw, looking toward north (-z).
+  // Pitch is the angle above the ground (35.26 = classic isometric, 90 = top-down).
   const yaw = THREE.MathUtils.degToRad(yawDeg);
-  const pitch = Math.atan(1 / Math.SQRT2);
-  const dist = 50;
+  const pitch = THREE.MathUtils.degToRad(Math.min(pitchDeg, 89.9));
+  const dist = CAMERA_DIST;
   camera.position.set(
     center.x + dist * Math.cos(pitch) * Math.sin(yaw),
     dist * Math.sin(pitch),
@@ -59,7 +65,12 @@ addEventListener('wheel', (e) => {
   updateCamera();
 });
 addEventListener('keydown', (e) => {
-  if (e.key === 'v') { yawDeg = yawDeg === 45 ? 0 : 45; updateCamera(); }
+  if (e.key === 'v') yawDeg = yawDeg === 45 ? 0 : 45;
+  else if (e.key === '[') pitchDeg = Math.max(30, pitchDeg - 5);
+  else if (e.key === ']') pitchDeg = Math.min(90, pitchDeg + 5);
+  else if (e.key === 't') pitchDeg = pitchDeg >= 90 ? 55 : 90;
+  else return;
+  updateCamera();
 });
 
 // --- lighting: dim moonlight + warm torches ------------------------------
@@ -161,47 +172,53 @@ const rangerMixer = new THREE.AnimationMixer(ranger);
 rangerMixer.clipAction(THREE.AnimationClip.findByName(rangerGltf.animations, 'Bow_Shoot')).play();
 
 // --- zombie horde -------------------------------------------------------
-const zombieClips = {
-  walk: THREE.AnimationClip.findByName(zombieGltf.animations, 'Walk'),
-  punch: THREE.AnimationClip.findByName(zombieGltf.animations, 'Punch'),
-};
+// Simulation state is the same for both renderers; ?horde=skinned uses one SkinnedMesh
+// clone per zombie, the default 'baked' mode draws all zombies in one instanced call.
+const hordeMode = params.get('horde') ?? 'baked';
+const MAX_ZOMBIES = 2000;
 const zombieProto = zombieGltf.scene;
 const rawZombie = fitTo(zombieProto, 'y', 0.85);
 enableShadows(zombieProto);
-// ?lite=1: cheaper zombies for the perf comparison (Lambert shading, no separate eyelid mesh).
-if (params.get('lite') === '1') {
-  zombieProto.traverse((o) => {
-    if (!o.isMesh) return;
-    if (o.name === 'Eyelid') o.visible = false;
-    o.material = new THREE.MeshLambertMaterial({ map: o.material.map, color: o.material.color });
+const clipByName = (n) => THREE.AnimationClip.findByName(zombieGltf.animations, n);
+
+let baked = null;
+if (hordeMode === 'baked') {
+  const tb = performance.now();
+  baked = createBakedHorde(zombieProto, ['Walk', 'Punch', 'Death', 'Run'].map(clipByName), MAX_ZOMBIES, {
+    castShadow: useShadows, meshName: 'Zombie',
   });
+  timings.bakeMs = Math.round(performance.now() - tb);
+  scene.add(baked.mesh);
 }
 
 const zombies = [];
 function spawnZombie() {
-  const mesh = SkeletonUtils.clone(zombieProto);
-  const mixer = new THREE.AnimationMixer(mesh);
-  const walk = mixer.clipAction(zombieClips.walk);
-  const punch = mixer.clipAction(zombieClips.punch);
-  walk.time = Math.random() * zombieClips.walk.duration;
-  walk.play();
-  const z = { mesh, mixer, walk, punch, speed: 0.6 + Math.random() * 0.5, attacking: false };
+  const z = { x: 0, z: 0, speed: 0.6 + Math.random() * 0.5, attacking: false, t: Math.random() * 2 };
+  if (!baked) {
+    z.mesh = SkeletonUtils.clone(zombieProto);
+    z.mixer = new THREE.AnimationMixer(z.mesh);
+    z.walk = z.mixer.clipAction(clipByName('Walk'));
+    z.punch = z.mixer.clipAction(clipByName('Punch'));
+    z.walk.time = z.t;
+    z.walk.play();
+    scene.add(z.mesh);
+  }
   resetZombie(z);
-  scene.add(mesh);
   zombies.push(z);
 }
 function resetZombie(z) {
-  z.mesh.position.set(0.5 + Math.random() * (MAP_W - 1), 0, Math.random() * 3);
-  z.mesh.rotation.y = 0; // face south (+z)
+  z.x = 0.5 + Math.random() * (MAP_W - 1);
+  z.z = Math.random() * 3;
   z.attackTimer = 0;
-  if (z.attacking) { z.punch.stop(); z.walk.play(); z.attacking = false; }
+  if (z.attacking && z.mesh) { z.punch.stop(); z.walk.play(); }
+  z.attacking = false;
 }
 function setZombieCount(n) {
+  n = Math.min(n, MAX_ZOMBIES);
   while (zombies.length < n) spawnZombie();
   while (zombies.length > n) {
     const z = zombies.pop();
-    scene.remove(z.mesh);
-    z.mixer.stopAllAction();
+    if (z.mesh) { scene.remove(z.mesh); z.mixer.stopAllAction(); }
   }
   zombieCount = n;
 }
@@ -214,32 +231,30 @@ const frameTimes = [];
 let statsTimer = 0;
 let lastStats = {};
 
-// ?anim=N updates each zombie's skeleton only every Nth frame (staggered across the horde).
-const animEvery = Math.max(1, Number(params.get('anim') ?? 1));
-let frameNo = 0;
-
 function update(dt) {
   rangerMixer.update(dt);
-  frameNo++;
   for (let i = 0; i < zombies.length; i++) {
     const z = zombies[i];
+    z.t += dt;
     if (!z.attacking) {
-      z.mesh.position.z += z.speed * dt;
-      if (z.mesh.position.z >= WALL_ROW - 0.35) {
+      z.z += z.speed * dt;
+      if (z.z >= WALL_ROW - 0.35) {
         z.attacking = true;
-        z.walk.stop();
-        z.punch.play();
+        z.t = 0;
+        if (z.mesh) { z.walk.stop(); z.punch.play(); }
       }
     } else if ((z.attackTimer += dt) > 6) {
       resetZombie(z); // loop the horde so the test runs indefinitely
     }
-    z.animDt = (z.animDt ?? 0) + dt;
-    const animate = (frameNo + i) % animEvery === 0;
-    if (animate) { z.mixer.update(z.animDt); z.animDt = 0; }
-    // Skipped frames also skip the subtree's bone matrix updates, where most of the cost is.
-    // The zombie's on-screen position lags by at most animEvery-1 frames, which is not visible.
-    z.mesh.matrixWorldAutoUpdate = animate;
+    if (baked) {
+      // Models face +z, which is south; zombies walk south, so no extra rotation.
+      baked.set(i, z.x, 0, z.z, 0, z.attacking ? 'Punch' : 'Walk', z.t * (z.attacking ? 1 : z.speed * 1.4));
+    } else {
+      z.mesh.position.set(z.x, 0, z.z);
+      z.mixer.update(dt);
+    }
   }
+  if (baked) baked.commit(zombies.length);
 }
 
 function frame() {
@@ -257,13 +272,14 @@ function frame() {
     lastStats = {
       fps: Math.round(1000 / avg), avgMs: +avg.toFixed(1), worstMs: +worst.toFixed(1),
       zombies: zombies.length, drawCalls: info.calls, triangles: info.triangles,
-      shadows: useShadows, yaw: yawDeg, ...timings,
+      shadows: useShadows, yaw: yawDeg, pitch: pitchDeg, horde: hordeMode, ...timings,
     };
     statsEl.textContent =
       `FPS ${lastStats.fps}  (avg ${lastStats.avgMs} ms, worst ${lastStats.worstMs} ms)\n` +
       `zombies ${lastStats.zombies}   draw calls ${info.calls}   tris ${info.triangles}\n` +
-      `shadows ${useShadows ? 'on' : 'off'}   load ${timings.loadMs} ms\n` +
-      `wheel: zoom   V: toggle yaw 45/0`;
+      `shadows ${useShadows ? 'on' : 'off'}   load ${timings.loadMs} ms   bake ${timings.bakeMs ?? '-'} ms\n` +
+      `horde ${hordeMode}   pitch ${pitchDeg}°   yaw ${yawDeg}°\n` +
+      `wheel: zoom   [ ]: pitch   T: top-down   V: yaw 45/0`;
   }
   requestAnimationFrame(frame);
 }

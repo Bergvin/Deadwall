@@ -77,10 +77,11 @@ Each phase ends with: the user plays and gives feedback, then commit and push to
   0 zombies 1.3 ms/frame · 50 → 5.6 ms · 200 → 16.4 ms (~60 fps) · 400 → 32 ms (~30 fps).
 - Cost is ~0.075 ms per skinned zombie and is **per-object CPU/driver overhead**, not triangles or shadows (shadows on/off made no difference). Each `Zombie_Basic` clone has 2 skinned meshes (body 7.6k tris + eyelid) and 50 bones.
 - Updating mixers every other frame (`?anim=2`) halves the update cost (3.2 → 1.9 ms at 200) but barely changes the total frame time.
-- **Plan:** use plain SkeletonUtils clones while building phases 1–4 (fine up to ~150–200 on screen). If hordes need to be larger, swap the zombie renderer for GPU instancing with baked animation textures in phase 5. The renderer is isolated from the logic, so this does not touch the gameplay code.
+- **Solved with a baked instanced horde** (`src/spike/bakedHorde.js`). At load, each clip is sampled at 30 fps, and skinned positions and normals go into float textures (~90 ms for 4 clips). One `InstancedMesh` per zombie type then reads the frame per instance in the vertex shader (`aFrame` attribute + `gl_VertexID`). Result: 200 zombies **2.0 ms** (was 16.4), 1000 → 3.1 ms, 2000 → 5.2 ms. **Use this for all zombie types.** Heroes stay normal skinned meshes (few of them, and they need blended animations).
+- Baked limits: no blending between clips (instant switch), one frame per instance (no interpolation; fine at 30 fps), the eyelid mesh is dropped. Shadows work via a patched `customDepthMaterial`.
 - **Model units:** Kenney castle pieces are about 1 unit per cell, so scale the whole kit by one factor taken from `wall.glb`. Quaternius RPG heroes are ~3 units tall and zombies ~1.2, so normalize each by height. Models face +z, so rotate π to face north (−z). Kenney `gate.glb` is only the door leaf, so use `wall-doorway.glb` for the gate opening.
-- **Camera:** yaw 0° (walls horizontal, enemies from the top of the screen) reads much better than 45° for this game. Use yaw 0° with the isometric pitch.
-- Spike URL params: `?n=200`, `?shadows=0`, `?anim=2`, `?lite=1`, `?yaw=0`; `V` toggles yaw.
+- **Camera:** yaw 0° (walls horizontal, enemies from the top of the screen), **pitch 55°** by default. Camera angle has no measurable effect on performance. Top-down (90°) works, but characters turn into blobs. Fog must start past the map center (camera distance + 4), otherwise the whole scene goes dark.
+- Spike URL params: `?n=200`, `?shadows=0`, `?horde=skinned`, `?yaw=0`, `?pitch=55`. Keys: `[` `]` pitch, `T` top-down, `V` yaw 45/0.
 
 ## Commands
 
