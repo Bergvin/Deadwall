@@ -11,6 +11,8 @@ export const MODELS = {
   towerMid: { url: 'models/kenney/tower-square-mid.glb' },
   towerTop: { url: 'models/kenney/tower-square-top.glb' },
   towerRoof: { url: 'models/kenney/tower-square-roof.glb' },
+  towerHexBase: { url: 'models/kenney/tower-hexagon-base.glb' },
+  towerHexTop: { url: 'models/kenney/tower-hexagon-top.glb' },
   gateDoor: { url: 'models/kenney/gate.glb' },
   flag: { url: 'models/kenney/flag-wide.glb' },
   rocksLarge: { url: 'models/kenney/rocks-large.glb' },

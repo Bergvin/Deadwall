@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { Simulation } from '../src/core/simulation.js';
 import { PHASE } from '../src/core/waves.js';
 import { GameLoop } from '../src/core/loop.js';
-import { MAP, WAVES, HEROES } from '../src/config/game.js';
+import { MAP, WAVES, HEROES, TOWERS } from '../src/config/game.js';
+import { buildBlock } from './helpers.js';
 
 const rich = (seed = 1) => {
   const sim = new Simulation({ seed });
@@ -56,30 +57,35 @@ test('difficulty rises across real waves: more enemies with more health', () => 
   }
 });
 
-test('recruit prices rise with company size; recruit/dismiss cycles always lose gold', () => {
+test('the champion is free and unique; tower build/sell cycles always lose gold', () => {
   const sim = rich(24);
-  const c0 = sim.heroes.recruitCost('archer');
-  const h = sim.heroes.recruit('archer');
-  assert.ok(sim.heroes.recruitCost('archer') > c0);
-  assert.equal(h.invested, c0);
+  const gold = sim.economy.gold;
+  const h = sim.heroes.recruitChampion('archer');
+  assert.ok(h && sim.economy.gold === gold, 'free');
+  assert.equal(sim.heroes.recruitChampion('mage'), null, 'only one');
+  const w = sim.walls.build('stone', 10, 10);
   const start = sim.economy.gold;
   for (let i = 0; i < 8; i++) {
-    const x = sim.heroes.recruit('mage');
-    sim.heroes.dismiss(x.id);
+    const t = sim.towers.build('fire', w.id);
+    sim.towers.upgrade(t.id);
+    sim.towers.sell(t.id);
   }
   assert.ok(sim.economy.gold < start);
 });
 
 test('invalid deployments are rejected and never duplicate heroes', () => {
   const sim = rich(25);
-  const w = sim.walls.build('stone', 10, 10);
-  const h = sim.heroes.recruit('archer');
+  const w = buildBlock(sim, 10, 10);
+  const h = sim.heroes.recruitChampion('archer');
   assert.equal(sim.heroes.canDeploy(h.id, 9999).reason, 'no_wall');
   assert.equal(sim.heroes.canDeploy(9999, w.id).reason, 'no_hero');
+  sim.towers.build('earth', sim.walls.at(11, 11).id);
+  assert.equal(sim.heroes.canDeploy(h.id, w.id).reason, 'needs_block', 'a tower blocks the block');
+  sim.towers.sell(sim.walls.at(11, 11).towerId);
   assert.ok(sim.heroes.deploy(h.id, w.id));
   assert.equal(sim.heroes.deploy(h.id, w.id), false);
   const total = [...sim.walls.all()].reduce((n, x) => n + x.heroes.filter((id) => id === h.id).length, 0);
-  assert.equal(total, 1);
+  assert.equal(total, 4);
 });
 
 test('game loop: pause freezes simulation time; speed changes keep step size and totals consistent', () => {
@@ -106,7 +112,8 @@ test('a full game: every enemy type and both bosses appear, and the run ends in 
   sim.events.on('zombieSpawned', (z) => types.add(z.type));
   // A thin defence that holds a while and then collapses.
   for (let x = 10; x <= 20; x++) sim.walls.build('reinforced', x, 16);
-  for (let x = 11; x <= 19; x += 2) sim.heroes.deploy(sim.heroes.recruit(['archer', 'crossbowman', 'mage', 'alchemist', 'paladin'][x % 5]).id, sim.grid.wallAt(x, 16));
+  const towerTypes = Object.keys(TOWERS);
+  for (let x = 10; x <= 20; x += 2) sim.towers.build(towerTypes[x % towerTypes.length], sim.grid.wallAt(x, 16));
   sim.economy.trySpend(sim.economy.gold);
   // An unbreakable gate until every enemy type has shown up, then a normal one.
   sim.fortress.maxHp = sim.fortress.hp = 1e9;

@@ -5,7 +5,7 @@ import * as THREE from 'three';
 export const FX_COLORS = {
   fire: 0xff7a20, frost: 0x8fd8ff, arcane: 0xb57aff, poison: 0x7cff5a, explosion: 0xffa040,
   bash: 0xf0e6d0, rally: 0xffc23d, holy: 0xffe08a, bolt: 0xc8b8a0, hit: 0xc8b8a0, level: 0xffd23d,
-  plague: 0x5aa020,
+  plague: 0x5aa020, earth: 0xa07848, wind: 0xd8fff0, water: 0x4aa8ff,
 };
 
 export class Fx {

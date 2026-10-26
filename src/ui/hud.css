@@ -279,3 +279,21 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 @media (max-width: 1100px) {
   .roster { width: 200px; top: 84px; }
 }
+
+/* --- elemental towers and champion selection --- */
+.e-fire { background: linear-gradient(135deg, #ff7a30, #8a2a10); }
+.e-earth { background: linear-gradient(135deg, #a07848, #4a3420); }
+.e-wind { background: linear-gradient(135deg, #a8e8c8, #3a7a60); }
+.e-water { background: linear-gradient(135deg, #5ab0ff, #1a4a8a); }
+.rrow.hero .rname b { color: var(--gold); }
+.screen .box.wide { max-width: min(980px, 94vw); }
+.champions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+.champion { font: inherit; text-align: left; cursor: pointer; padding: 10px; color: var(--text); background: var(--bg-raised); border: 1px solid var(--border); border-radius: 6px; display: grid; grid-template-columns: 44px 1fr; gap: 2px 10px; }
+.champion:hover { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+.champion .portrait { grid-row: span 3; }
+.champion .cname { font-family: var(--font); font-size: 17px; font-weight: 700; }
+.champion .crole { font-size: 12px; color: var(--muted); }
+.champion .cstats { font-size: 12px; color: var(--gold); }
+.champion .cabil, .champion .cnote { grid-column: span 2; font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+.champion .cnote b { color: var(--text); font-weight: 600; }
+@media (max-width: 900px) { .champions { grid-template-columns: repeat(2, 1fr); } }

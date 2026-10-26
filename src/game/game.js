@@ -2,7 +2,7 @@
 // persists between runs (renderer, camera, models, scenery, shared renderers) and creates
 // a fresh Session for every run.
 import * as THREE from 'three';
-import { MAP, CAMERA, ZOMBIES } from '../config/game.js';
+import { MAP, CAMERA, ZOMBIES, HEROES, CHAMPION } from '../config/game.js';
 import { MODELS } from '../config/assets.js';
 import { createMapGrid } from '../core/grid.js';
 import { GameLoop } from '../core/loop.js';
@@ -60,7 +60,7 @@ export class Game {
       onFrame: (realDt) => this.frame(realDt),
     });
     this.screens = new Screens(document.body, {
-      onNewGame: () => this.newGame(),
+      onNewGame: () => this.chooseChampion(),
       onMenu: () => this.toMenu(),
       onResume: () => this.togglePause(),
       getSettings: () => this.save.settings,
@@ -86,7 +86,16 @@ export class Game {
     this.session = null;
   }
 
-  newGame(seed) {
+  /** New Game first asks for the run's champion. */
+  chooseChampion() {
+    this.#endSession();
+    this.screens.hideGameOver();
+    this.screens.setPaused(false);
+    this.state = STATE.MENU;
+    this.screens.showHeroSelect(HEROES, CHAMPION, (type) => this.newGame(undefined, type));
+  }
+
+  newGame(seed, heroType = 'archer') {
     this.#endSession();
     this.screens.hideMenu();
     this.screens.hideGameOver();
@@ -97,7 +106,7 @@ export class Game {
       scene: this.scene, canvas: this.renderer.domElement, cam: this.cam, assets: this.assets,
       overlay: this.overlay, zombieView: this.zombieView, projectileView: this.projectileView,
       effects: this.effects, fx: this.fx, bars: this.bars, sfx: this.sfx, breaches: this.breaches, floaters: this.floaters, gateNode: this.gateNode,
-      loop: this.loop, seed, togglePause: () => this.togglePause(),
+      loop: this.loop, seed, heroType, togglePause: () => this.togglePause(),
       settings: this.save.settings, setSetting: (k, v) => this.setSetting(k, v),
       onGameOver: (summary) => this.gameOver(summary),
     });

@@ -39,11 +39,12 @@ export class Hud {
     this.side = h('div', 'panel');
     this.side.hidden = true;
     this.el.append(this.side);
-    this.roster = new HeroRoster(this.el, sim, { select: (sel) => actions.select(sel), focus: (id) => actions.focusHero(id) });
+    this.roster = new HeroRoster(this.el, sim, { select: (sel) => actions.select(sel), focus: (sel) => actions.focus(sel) });
     this.el.append(h('div', 'help',
       '<kbd>B</kbd> build wall &nbsp; <kbd>LMB</kbd> place / select &nbsp; drag for a line<br>'
       + '<kbd>RMB</kbd> cancel &nbsp; <kbd>RMB</kbd> drag / <kbd>WASD</kbd> pan &nbsp; <kbd>Wheel</kbd> zoom<br>'
-      + '<kbd>R</kbd> repair &nbsp; <kbd>Del</kbd> sell &nbsp; <kbd>M</kbd> move hero &nbsp; <kbd>Q</kbd><kbd>E</kbd><kbd>F</kbd> abilities<br>'
+      + '<kbd>5</kbd>-<kbd>8</kbd> towers &nbsp; <kbd>U</kbd> upgrade &nbsp; <kbd>R</kbd> repair &nbsp; <kbd>Del</kbd> sell<br>'
+      + '<kbd>M</kbd> move champion &nbsp; <kbd>Q</kbd><kbd>E</kbd><kbd>F</kbd> abilities<br>'
       + '<kbd>Space</kbd> pause &nbsp; <kbd>Enter</kbd> next wave'));
     this.toasts = h('div', 'toasts');
     this.banner = h('div', 'banner');
@@ -62,7 +63,8 @@ export class Hud {
     // Structural changes rebuild the open panel.
     const rebuild = () => this.showSelection(this.selection);
     for (const t of ['heroLevelUp', 'talentBought', 'heroDeployed', 'heroUnseated', 'heroFell',
-      'heroRevived', 'wallUpgraded', 'gateReinforced']) ev.on(t, rebuild);
+      'heroRevived', 'wallUpgraded', 'gateReinforced', 'towerUpgraded']) ev.on(t, rebuild);
+    for (const t of ['towerBuilt', 'towerRemoved']) ev.on(t, refresh);
     ev.on('heroEndangered', (hero) => this.toast(`${hero.name} is badly hurt!`, 'alert'));
     ev.on('heroFell', (hero) => this.toast(`${hero.name} has fallen! Revive them between waves.`, 'alert'));
     ev.on('bossSpawned', (z) => this.showBanner(this.cfg.ZOMBIES[z.type].name, this.cfg.ZOMBIES[z.type].description));
@@ -126,7 +128,7 @@ export class Hud {
     const bar = h('div', 'buildbar');
     const tabs = h('div', 'tabs');
     this.tabBtns = {};
-    for (const [key, label, enabled] of [['walls', 'Walls', true], ['heroes', 'Heroes', true], ['upgrades', 'Upgrades', false]]) {
+    for (const [key, label, enabled] of [['walls', 'Walls', true], ['towers', 'Towers', true], ['upgrades', 'Upgrades', false]]) {
       const t = h('button', 'tab', label);
       t.disabled = !enabled;
       if (!enabled) t.title = 'Coming in a later phase';
@@ -151,7 +153,7 @@ export class Hud {
           : t.arcane ? 'Slows + magic pulse' : t.armor ? `${Math.round(t.armor * 100)}% armor` : 'Basic';
         const c = h('button', 'card',
           `<span class="key">${i + 1}</span><div class="name">${t.name}</div>`
-          + `<div class="cost"></div><div class="meta">${t.maxHp} HP · ${t.heroCapacity} hero${t.heroCapacity > 1 ? 'es' : ''}</div>`
+          + `<div class="cost"></div><div class="meta">${t.maxHp} HP</div>`
           + `<div class="meta">${special}</div>`);
         c.title = t.description;
         c.addEventListener('click', () => this.actions.build(key));
@@ -159,16 +161,17 @@ export class Hud {
         this.cardEls[key] = { el: c, cost: () => this.sim.walls.costOf(key) };
       });
     } else {
-      for (const [key, t] of Object.entries(this.cfg.HEROES)) {
+      Object.entries(this.cfg.TOWERS).forEach(([key, t], i) => {
         const c = h('button', 'card hero',
-          `<div class="name"><span class="portrait mini c-${key}">${t.name[0]}</span>${t.name}</div><div class="cost"></div>`
-          + `<div class="meta role">${t.role}</div>`
-          + `<div class="meta">DMG ${t.damage} · ${fmt(1 / t.attackInterval, 1)}/s · RNG ${t.range}</div>`);
-        c.title = `${t.description}\nStrong: ${t.strengths}\nWeak: ${t.weaknesses}`;
-        c.addEventListener('click', () => this.actions.recruit(key));
+          `<span class="key">${i + 5}</span><div class="name"><span class="portrait mini e-${key}">${t.element[0]}</span>${t.name}</div>`
+          + `<div class="cost"></div>`
+          + `<div class="meta">DMG ${t.damage} · ${fmt(1 / t.interval, 1)}/s · RNG ${t.range}</div>`
+          + `<div class="meta">${towerEffect(t)}</div>`);
+        c.title = `${t.description}\nStrong: ${t.strengths}\nWeak: ${t.weaknesses}\nBuilt on top of a wall.`;
+        c.addEventListener('click', () => this.actions.buildTower(key));
         this.cards.append(c);
-        this.cardEls[key] = { el: c, cost: () => this.sim.heroes.recruitCost(key) };
-      }
+        this.cardEls[key] = { el: c, cost: () => this.sim.towers.costOf(key) };
+      });
     }
     this.refresh();
   }
@@ -179,7 +182,9 @@ export class Hud {
       this.modeEl.innerHTML = `Building <b>${this.cfg.WALLS[mode.wallType].name}</b> — click to place, drag for a line, right-click to stop`;
     } else if (mode.kind === 'deploy') {
       const hero = this.sim.heroes.get(mode.heroId);
-      this.modeEl.innerHTML = `Place <b>${hero?.name ?? 'hero'}</b> on a wall with a free slot (green) — right-click to cancel`;
+      this.modeEl.innerHTML = `Place <b>${hero?.name ?? 'hero'}</b> on a free 2×2 block of walls (green) — right-click to cancel`;
+    } else if (mode.kind === 'tower') {
+      this.modeEl.innerHTML = `Building <b>${this.cfg.TOWERS[mode.towerType].name}</b> — click a wall (green), right-click to stop`;
     } else if (mode.kind === 'ability') {
       const hero = this.sim.heroes.get(mode.heroId);
       const a = this.cfg.HEROES[hero.type].abilities[mode.abilityId];
@@ -188,7 +193,7 @@ export class Hud {
       this.modeEl.innerHTML = '';
     }
     for (const [key, c] of Object.entries(this.cardEls ?? {})) {
-      c.el.classList.toggle('active', mode.kind === 'build' && mode.wallType === key);
+      c.el.classList.toggle('active', (mode.kind === 'build' && mode.wallType === key) || (mode.kind === 'tower' && mode.towerType === key));
     }
   }
 
@@ -201,17 +206,19 @@ export class Hud {
   /** Builds the panel for the selection (or hides it). */
   showSelection(sel) {
     this.selection = sel;
-    this.roster?.setSelected(sel?.kind === 'hero' ? sel.id : 0);
+    this.roster?.setSelected(sel?.kind === 'hero' || sel?.kind === 'tower' ? sel.id : 0);
     const sim = this.sim;
     const wall = sel?.kind === 'wall' ? sim.walls.get(sel.id) : null;
     const hero = sel?.kind === 'hero' ? sim.heroes.get(sel.id) : null;
+    const tower = sel?.kind === 'tower' ? sim.towers.get(sel.id) : null;
     const gate = sel?.kind === 'gate';
-    this.side.hidden = !wall && !hero && !gate;
+    this.side.hidden = !wall && !hero && !gate && !tower;
     this.side.innerHTML = '';
     this.side.classList.toggle('wide', !!hero);
     this.dyn = null;
     if (wall) this.#buildWallPanel(wall);
     else if (hero) this.#buildHeroPanel(hero);
+    else if (tower) this.#buildTowerPanel(tower);
     else if (gate) this.#buildGatePanel();
     this.dyn?.();
   }
@@ -233,7 +240,8 @@ export class Hud {
       + '<div class="row"><span>Health</span><b class="v-hp"></b></div><div class="bar"><div class="v-bar"></div></div>'
       + special
       + `<div class="row"><span>Heroes</span><b>${wall.heroes.length} / ${wall.heroCapacity}</b></div>`
-      + `<div class="row"><span>Stationed</span><b>${names}</b></div>`
+      + `<div class="row"><span>Champion</span><b>${names}</b></div>`
+      + (wall.towerId ? `<div class="row"><span>Tower</span><b>${this.cfg.TOWERS[sim.towers.get(wall.towerId).type].name} · Lv ${sim.towers.get(wall.towerId).level}</b></div>` : '')
       + '<div class="row v-buffrow"><span>Protected</span><b class="v-buff"></b></div>';
     const repair = h('button', 'btn');
     repair.addEventListener('click', () => { if (!sim.walls.repair(wall.id)) this.toast('Not enough gold'); });
@@ -245,6 +253,11 @@ export class Hud {
     const sell = h('button', 'btn danger');
     sell.addEventListener('click', () => sim.walls.sell(wall.id));
     this.side.append(repair, upgrade, sell);
+    if (wall.towerId) {
+      const tb = h('button', 'btn', 'Select the tower');
+      tb.addEventListener('click', () => this.actions.select({ kind: 'tower', id: wall.towerId }));
+      this.side.append(tb);
+    }
     const nextHp = wall.level < maxLevel
       ? Math.round(this.cfg.WALLS[wall.type].maxHp * this.cfg.WALL_UPGRADES.hpMult ** wall.level) : null;
     const q = (c) => this.side.querySelector(c);
@@ -267,6 +280,66 @@ export class Hud {
       const mult = sim.combat.wallDamageMultiplier(wall);
       q('.v-buffrow').style.display = mult < 1 ? '' : 'none';
       q('.v-buff').textContent = `-${Math.round((1 - mult) * 100)}% damage${buff ? ` (${fmt(buff.until - sim.time)}s)` : ''}`;
+    };
+  }
+
+  #buildTowerPanel(tower) {
+    const sim = this.sim;
+    const t = this.cfg.TOWERS[tower.type];
+    const maxLevel = this.cfg.TOWER_RULES.maxLevel;
+    const s = tower.stats;
+    const wall = sim.walls.get(tower.wallId);
+    const effect = [
+      s.aoe ? `area ${fmt(s.aoe, 1)}` : '',
+      s.burn ? `burn ${fmt(s.burn.dps, 1)}/s` : '',
+      s.stun ? `stun ${fmt(s.stun, 1)}s, armor pierce ${Math.round(s.armorPen * 100)}%` : '',
+      s.targets > 1 ? `${s.targets} targets` : '',
+      s.slow ? `slow ${Math.round((1 - s.slow.factor) * 100)}%` : '',
+    ].filter(Boolean).join(' · ');
+    this.side.innerHTML =
+      `<div class="hero-head"><div class="portrait e-${tower.type}">${t.element[0]}</div>`
+      + `<div><h3>${t.name}</h3><div class="sub">Level ${tower.level} / ${maxLevel} · on wall ${wall?.x},${wall?.y}</div></div></div>`
+      + `<div class="row"><span>Damage</span><b>${fmt(s.damage, 1)}</b></div>`
+      + `<div class="row"><span>Attacks / s</span><b>${fmt(1 / s.interval, 2)}</b></div>`
+      + `<div class="row"><span>Range</span><b>${fmt(s.range, 1)}</b></div>`
+      + `<div class="row"><span>Effect</span><b>${effect}</b></div>`
+      + '<div class="row"><span>DPS last wave</span><b class="v-dps"></b></div>'
+      + '<div class="row"><span>Kills</span><b class="v-kills"></b></div>';
+    const tgt = h('select', 'targeting');
+    for (const [k, label] of Object.entries(this.cfg.TARGETING)) {
+      const o = h('option', '', label);
+      o.value = k;
+      if (tower.targeting === k) o.selected = true;
+      tgt.append(o);
+    }
+    tgt.addEventListener('change', () => sim.towers.setTargeting(tower.id, tgt.value));
+    const tRow = h('div', 'row', '<span>Target</span>');
+    tRow.append(tgt);
+    const upgrade = h('button', 'btn');
+    upgrade.addEventListener('click', () => {
+      const r = sim.towers.canUpgrade(tower.id);
+      if (r.ok) sim.towers.upgrade(tower.id);
+      else this.toast(r.reason === 'max_level' ? 'Already at maximum level' : 'Not enough gold');
+    });
+    const sell = h('button', 'btn danger');
+    sell.addEventListener('click', () => sim.towers.sell(tower.id));
+    const toWall = h('button', 'btn', 'Select the wall below');
+    toWall.addEventListener('click', () => this.actions.select({ kind: 'wall', id: tower.wallId }));
+    this.side.append(tRow, upgrade, sell, toWall);
+    const q = (c) => this.side.querySelector(c);
+    this.dyn = () => {
+      q('.v-dps').textContent = tower.lastWaveDps ? fmt(tower.lastWaveDps, 1) : '—';
+      q('.v-kills').textContent = tower.kills;
+      const cost = sim.towers.upgradeCost(tower.id);
+      let ul = 'Fully upgraded';
+      if (tower.level < maxLevel) {
+        const next = this.cfg.TOWERS[tower.type].damage * this.cfg.TOWER_RULES.damageMult ** tower.level;
+        ul = `Upgrade to level ${tower.level + 1} (DMG ${fmt(next, 1)}) for ${cost} gold <span class="k">U</span>`;
+      }
+      if (upgrade.innerHTML !== ul) upgrade.innerHTML = ul;
+      upgrade.disabled = tower.level >= maxLevel || !sim.economy.canAfford(cost);
+      const sl = `Sell for ${sim.towers.sellValue(tower.id)} gold <span class="k">Del</span>`;
+      if (sell.innerHTML !== sl) sell.innerHTML = sl;
     };
   }
 
@@ -396,21 +469,11 @@ export class Hud {
       this.side.append(revive);
       this.reviveBtn = revive;
     }
-    const move = h('button', 'btn', wall ? 'Reposition <span class="k">M</span>' : 'Deploy to a wall');
+    // The champion cannot be dismissed (there is only one); it can move to another 2x2 block.
+    const move = h('button', 'btn', wall ? 'Move to another 2×2 block <span class="k">M</span>' : 'Place on a 2×2 block of walls');
     move.disabled = hero.fallen;
     move.addEventListener('click', () => this.actions.deploy(hero.id));
-    const refund = sim.heroes.refundValue(hero.id);
-    const dismiss = h('button', 'btn danger', `Dismiss (+${refund} gold)`);
-    // Two-step confirmation so a valuable hero is never lost to a stray click.
-    dismiss.addEventListener('click', () => {
-      if (dismiss.dataset.armed) { sim.heroes.dismiss(hero.id); return; }
-      dismiss.dataset.armed = '1';
-      dismiss.textContent = `Confirm: dismiss ${hero.name} (level ${hero.level})?`;
-      setTimeout(() => {
-        if (dismiss.isConnected) { delete dismiss.dataset.armed; dismiss.textContent = `Dismiss (+${refund} gold)`; }
-      }, 3000);
-    });
-    this.side.append(move, dismiss);
+    this.side.append(move);
 
     const q = (c) => this.side.querySelector(c);
     this.dyn = () => {
@@ -544,6 +607,15 @@ export class Hud {
   dispose() {
     this.el.remove();
   }
+}
+
+/** One-line summary of a tower's element effect. */
+function towerEffect(t) {
+  if (t.burn) return `Area ${t.aoe} · burns ${t.burn.dps}/s`;
+  if (t.stun) return `Pierces ${Math.round(t.armorPen * 100)}% armor · stuns`;
+  if (t.targets) return `Hits ${t.targets} at once · long range`;
+  if (t.slow) return `Splash · slows ${Math.round((1 - t.slow.factor) * 100)}%`;
+  return '';
 }
 
 function barColor(r) {

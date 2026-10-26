@@ -8,6 +8,7 @@ import { findPath } from '../core/pathfinding.js';
 import { zombieCostFn } from '../core/walls.js';
 import { WallView } from '../render/wallView.js';
 import { HeroView } from '../render/heroView.js';
+import { TowerView } from '../render/towerView.js';
 import { healthColor } from '../render/healthBars.js';
 import { FX_COLORS } from '../render/fx.js';
 import { Interaction } from '../input/interaction.js';
@@ -26,19 +27,21 @@ export class Session {
     const sim = this.sim;
     this.wallView = new WallView(scene, assets, sim.walls, sim.events);
     this.heroView = new HeroView(scene, assets, sim.heroes, sim.events, sim.config.HEROES);
+    this.towerView = new TowerView(scene, assets, sim.towers, sim.events, sim.config.TOWERS);
 
     const loop = shared.loop;
     this.hud = new Hud(document.body, sim, {
       build: (type) => this.input.enterBuild(type),
-      recruit: (type) => this.recruit(type),
+      buildTower: (type) => this.input.enterTowerBuild(type),
       deploy: (heroId) => this.input.enterDeploy(heroId),
       useAbility: (heroId, id) => this.input.useAbility(heroId, id),
       select: (sel) => this.input.select(sel),
-      focusHero: (id) => {
-        const h = sim.heroes.get(id);
-        const p = h && sim.heroes.positionOf(h);
+      focus: (sel) => {
+        const h = sel.kind === 'hero' ? sim.heroes.get(sel.id) : null;
+        const t = sel.kind === 'tower' ? sim.towers.get(sel.id) : null;
+        const p = h ? sim.heroes.positionOf(h) : t ? { x: t.x, z: t.z } : null;
         if (p) { cam.target.set(p.x, 0, p.z + 1); cam.update(0); }
-        this.input.select({ kind: 'hero', id });
+        this.input.select(sel);
       },
       startWave: () => sim.waves.startNext(),
       togglePause: () => shared.togglePause(),
@@ -49,7 +52,7 @@ export class Session {
       isMuted: () => shared.settings.muted,
     });
     this.input = new Interaction({
-      canvas, cam, sim, wallView: this.wallView, heroView: this.heroView, overlay,
+      canvas, cam, sim, wallView: this.wallView, heroView: this.heroView, towerView: this.towerView, overlay,
       hud: this.hud, cameraCfg: CAMERA, signal: this.abort.signal,
     });
     addEventListener('keydown', (e) => {
@@ -60,6 +63,7 @@ export class Session {
 
     this.lastHeroPos = new Map();
     this.#wireFeedback();
+    this.#recruitChampion(shared.heroType ?? 'archer');
     this.showPath = shared.settings?.showPath ?? true;
     this.pathDirty = true;
     sim.events.on('wallAdded', () => { this.pathDirty = true; });
@@ -69,11 +73,10 @@ export class Session {
     }, { signal: this.abort.signal });
   }
 
-  recruit(type) {
-    const hero = this.sim.heroes.recruit(type);
-    if (!hero) { this.hud.toast('Not enough gold'); return; }
-    this.hud.toast(`${hero.name} the ${this.sim.config.HEROES[type].name} joins the defense`);
-    this.input.enterDeploy(hero.id);
+  /** The run's champion joins at the start and waits in reserve until placed on a 2x2 block. */
+  #recruitChampion(type) {
+    const hero = this.sim.heroes.recruitChampion(type);
+    this.hud.toast(`${hero.name} the ${this.sim.config.HEROES[type].name} leads the defence. Build a 2×2 block of walls and place your champion on it.`, 'good');
   }
 
   /** Visual and text feedback for simulation events. */
@@ -185,6 +188,10 @@ export class Session {
     };
     ev.on('heroAttack', ({ hero }) => { const s = ATTACK[hero.type]; if (s) sfx.play(s, 0.8); });
     ev.on('meleeHit', () => sfx.play('melee'));
+    const TOWER_SOUND = { fire: 'magic', earth: 'crossbow', wind: 'bow', water: 'magic' };
+    ev.on('towerAttack', ({ tower }) => sfx.play(TOWER_SOUND[tower.type], 0.6));
+    for (const t of ['towerBuilt']) ev.on(t, () => sfx.play('build', 1.2));
+    ev.on('towerUpgraded', () => sfx.play('repair', 1.3));
     ev.on('impactFx', ({ fx }) => { const s = IMPACT[fx]; if (s) sfx.play(s); });
     ev.on('zombieAttack', ({ zombie, gate }) => sfx.play(gate ? 'gateHit' : 'wallHit', zombie.boss ? 1.5 : zombie.scale));
     ev.on('zombieKilled', ({ zombie }) => { sfx.play('death', zombie.scale); sfx.play('gold'); });
@@ -222,6 +229,7 @@ export class Session {
     projectileView.sync(sim.projectiles.list);
     this.wallView.update(realDt);
     this.heroView.update(this.shared.loop.paused ? 0 : realDt * this.shared.loop.speed, sim.walls);
+    this.towerView.update(realDt);
     effects.update(realDt);
     floaters.update(realDt, cam.camera, canvas);
     if (gateNode) {
@@ -263,6 +271,7 @@ export class Session {
     this.sim.events.clear();
     this.wallView.dispose();
     this.heroView.dispose();
+    this.towerView.dispose();
     this.hud.dispose();
     const s = this.shared;
     s.zombieView.clear();

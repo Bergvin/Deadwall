@@ -17,6 +17,12 @@ export function makeWorld({ gold = 1000, map = MAP } = {}) {
   return { events, log, grid, economy, walls };
 }
 
+/** Builds a 2x2 block of walls with top-left (x, y); returns the top-left wall. */
+export function buildBlock(sim, x, y, type = 'stone') {
+  for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) sim.walls.build(type, x + dx, y + dy);
+  return sim.walls.at(x, y);
+}
+
 /** Open w x h grid (all OPEN terrain). */
 export function openGrid(w, h) {
   const g = new Grid(w, h);

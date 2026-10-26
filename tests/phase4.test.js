@@ -4,6 +4,7 @@ import { Simulation } from '../src/core/simulation.js';
 import { PHASE, waveComposition } from '../src/core/waves.js';
 import { ZSTATE } from '../src/core/zombies.js';
 import { WALLS, WALL_UPGRADES, ZOMBIES, WAVE_TABLE, ELITE, FORTRESS, MAP } from '../src/config/game.js';
+import { buildBlock } from './helpers.js';
 
 const rich = (seed = 1) => {
   const sim = new Simulation({ seed });
@@ -13,7 +14,7 @@ const rich = (seed = 1) => {
 const pin = (sim, z) => { sim.zombies.applyStun(z, 1e6); return z; };
 
 // --- walls -------------------------------------------------------------------
-test('every wall type builds with its own stats; reinforced is a two-hero platform', () => {
+test('every wall type builds with its own stats', () => {
   const sim = rich();
   let x = 5;
   for (const [key, t] of Object.entries(WALLS)) {
@@ -22,7 +23,6 @@ test('every wall type builds with its own stats; reinforced is a two-hero platfo
     assert.equal(w.maxHp, t.maxHp);
     assert.equal(w.heroCapacity, t.heroCapacity);
   }
-  assert.equal(sim.walls.at(6, 10).heroCapacity, 2);
 });
 
 test('wall armor reduces incoming damage', () => {
@@ -138,11 +138,13 @@ test('siege zombies hit reinforced walls harder', () => {
 test('plague carriers poison nearby heroes and leave puddles; heroes fall, then revive between waves', () => {
   const sim = rich(8);
   for (let x = 0; x < MAP.width; x++) sim.walls.build('reinforced', x, 10);
-  const wall = sim.walls.at(15, 10);
-  const hero = sim.heroes.recruit('mage');
+  const wall = buildBlock(sim, 15, 10, 'reinforced');
+  const hero = sim.heroes.recruitChampion('mage');
+  hero.autoCast = false;
   sim.heroes.deploy(hero.id, wall.id);
   const p = sim.zombies.spawn('plague', 15.5, 8.6);
-  sim.run(3);
+  p.hp = p.maxHp = 5000; // survive the champion long enough to strike the wall
+  sim.run(5);
   assert.ok(hero.hp < hero.maxHp, 'aura hurt the hero');
   assert.ok(sim.hazards.puddles.length > 0, 'puddle at the struck wall');
   let fell = 0;
@@ -198,8 +200,8 @@ test('wave composition: new threats arrive gradually, bosses every few waves, el
   assert.ok(waveComposition(10, WAVE_TABLE, ELITE).eliteChance > 0);
   const w1 = waveComposition(1, WAVE_TABLE, ELITE), w10 = waveComposition(10, WAVE_TABLE, ELITE);
   assert.ok(w10.hpMultiplier > w1.hpMultiplier && w10.damageMultiplier > w1.damageMultiplier);
-  assert.ok(w10.hpMultiplier < 3.5, 'growth is gradual, not extreme');
-  assert.ok(waveComposition(30, WAVE_TABLE, ELITE).hpMultiplier < 16, 'still bounded late');
+  assert.ok(w10.hpMultiplier < 4, 'growth is gradual, not extreme');
+  assert.ok(waveComposition(30, WAVE_TABLE, ELITE).hpMultiplier < 22, 'still bounded late');
 });
 
 test('boss wave actually spawns its boss once; elites are tougher and worth more', () => {

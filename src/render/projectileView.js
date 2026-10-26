@@ -11,10 +11,15 @@ const STYLES = {
   fireball: { geom: () => new THREE.SphereGeometry(0.2, 12, 10), color: 0xff7a20 },
   flask: { geom: () => new THREE.SphereGeometry(0.08, 8, 6), color: 0x7cff5a },
   bomb: { geom: () => new THREE.SphereGeometry(0.12, 8, 6), color: 0xff9a40 },
+  firebolt: { geom: () => new THREE.SphereGeometry(0.11, 10, 8), color: 0xff6a20 },
+  boulder: { geom: () => new THREE.DodecahedronGeometry(0.15), color: 0x8a6a48 },
+  gust: { geom: () => cyl(0.025, 0.6), color: 0xd8fff0 },
+  waterbolt: { geom: () => new THREE.SphereGeometry(0.1, 10, 8), color: 0x4aa8ff },
 };
 const KIND_STYLE = {
   arrow: 'shaft', piercing: 'pierce', bolt: 'bolt', apbolt: 'apbolt',
   orb: 'orb', fireball: 'fireball', flask: 'flask', bomb: 'bomb',
+  firebolt: 'firebolt', boulder: 'boulder', gust: 'gust', waterbolt: 'waterbolt',
 };
 
 function cyl(r, len) {

@@ -3,18 +3,19 @@ import assert from 'node:assert/strict';
 import { Simulation } from '../src/core/simulation.js';
 import { HEROES, HERO_RULES } from '../src/config/game.js';
 import { heroStats } from '../src/core/heroStats.js';
+import { buildBlock } from './helpers.js';
 
 const DT = 1 / 60;
 
 /**
- * A sim with lots of gold, one wall at (15, 14) and a hero of `type` on it. Auto-cast is
- * off by default so tests can cast abilities by hand.
+ * A sim with lots of gold, a 2x2 block of walls at (15..16, 14..15) and a champion of
+ * `type` on it (standing at 16, 15). Auto-cast is off by default so tests can cast by hand.
  */
 function setup(type, { level = 1, auto = false } = {}) {
   const sim = new Simulation({ seed: 100 });
   sim.economy.earn(100000);
-  const wall = sim.walls.build('stone', 15, 14);
-  const hero = sim.heroes.recruit(type);
+  const wall = buildBlock(sim, 15, 14);
+  const hero = sim.heroes.recruitChampion(type);
   sim.heroes.deploy(hero.id, wall.id);
   while (hero.level < level) sim.heroes.addXp(hero, sim.heroes.xpToNext(hero));
   hero.autoCast = auto;
@@ -66,8 +67,10 @@ test('abilities are locked until their unlock level', () => {
 test('abilities: out of range and undeployed heroes are rejected', () => {
   const { sim, hero } = setup('mage', { level: 5 });
   assert.equal(sim.combat.canUse(hero.id, 'fireball', { x: 15.5, z: 0.5 }).reason, 'out_of_range');
-  const reserve = sim.heroes.recruit('mage');
-  assert.equal(sim.combat.canUse(reserve.id, 'frostNova').reason, 'not_deployed');
+  const other = new Simulation({ seed: 101 });
+  const reserve = other.heroes.recruitChampion('mage');
+  assert.equal(other.combat.canUse(reserve.id, 'frostNova').reason, 'not_deployed');
+  assert.ok(sim.heroes.get(hero.id));
 });
 
 test('multishot hits several enemies; piercing arrow hits a whole line', () => {
@@ -130,8 +133,8 @@ test('warrior guard and rally reduce wall damage; paladin mends walls', () => {
 
 test('holy shield protects a wall and its neighbours; consecration damages over time', () => {
   const { sim, hero, wall } = setup('paladin', { level: 2 });
-  const side = sim.walls.build('stone', 16, 14);
-  sim.combat.use(hero.id, 'holyShield', { wallId: wall.id });
+  const side = sim.walls.build('stone', 17, 14);
+  sim.combat.use(hero.id, 'holyShield', { wallId: sim.walls.at(16, 14).id });
   const before = side.hp;
   sim.walls.damage(side.id, 100);
   assert.ok(before - side.hp <= 31, 'neighbour shielded');

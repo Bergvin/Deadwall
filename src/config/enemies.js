@@ -117,6 +117,6 @@ export const WAVE_TABLE = {
    * steeper late so endless runs end). Damage: 1 + damageGrowth * (n - 1).
    */
   hpGrowth: 0.1,
-  hpGrowthLate: 0.013,
+  hpGrowthLate: 0.02,
   damageGrowth: 0.04,
 };

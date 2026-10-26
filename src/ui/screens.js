@@ -60,7 +60,7 @@ export class Screens {
       + `<span>Runs</span><b>${save.runs}</b>`));
     box.append(this.#settingsBlock());
     box.append(h('div', 'controlsHelp',
-      'Build walls to steer the horde · Recruit heroes and station them on walls<br>'
+      'Build walls to steer the horde · Raise elemental towers on your walls · Your champion holds a 2×2 block<br>'
       + 'Zombies smash walls in their way · If the gate falls, the run is over'));
     this.menu.append(box);
     start.focus();
@@ -68,6 +68,35 @@ export class Screens {
 
   hideMenu() {
     this.menu.hidden = true;
+  }
+
+  /**
+   * Champion selection: one of the six classes leads the defence for the whole run.
+   * @param {Record<string, object>} heroes  HEROES config
+   * @param {{hpMult:number, damageMult:number}} champion
+   * @param {(type: string) => void} onPick
+   */
+  showHeroSelect(heroes, champion, onPick) {
+    this.over.hidden = true;
+    this.menu.hidden = false;
+    this.menu.innerHTML = '';
+    const box = h('div', 'box wide',
+      '<h2>Choose your champion</h2><div class="tagline">One giant hero leads the defence. It stands on a 2×2 block of walls and grows stronger every wave. You get only one.</div>');
+    const grid = h('div', 'champions');
+    for (const [key, t] of Object.entries(heroes)) {
+      const card = h('button', 'champion',
+        `<div class="portrait c-${key}">${t.name[0]}</div><div class="cname">${t.name}</div>`
+        + `<div class="crole">${t.role}</div>`
+        + `<div class="cstats">HP ${Math.round(t.hp * champion.hpMult)} · DMG ${Math.round(t.damage * champion.damageMult)} · RNG ${t.range + champion.rangeAdd}</div>`
+        + `<div class="cabil">${Object.values(t.abilities).map((a) => a.name).join(' · ')}</div>`
+        + `<div class="cnote"><b>Strong:</b> ${t.strengths}<br><b>Weak:</b> ${t.weaknesses}</div>`);
+      card.addEventListener('click', () => onPick(key));
+      grid.append(card);
+    }
+    const back = h('button', 'btn big', 'Back');
+    back.addEventListener('click', () => this.handlers.onMenu());
+    box.append(grid, back);
+    this.menu.append(box);
   }
 
   /** @param {object} summary Simulation.summary() @param {{newBestWave:boolean, newHighScore:boolean}} rec */

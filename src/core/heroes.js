@@ -1,28 +1,58 @@
-// Hero roster: recruitment, deployment on walls, repositioning, dismissal, experience,
-// levels, talents and targeting preferences. Combat itself lives in combat.js.
-// A hero is either in reserve (wallId 0), walking to a wall (moving > 0) or deployed.
+// The champion: one hero per run, chosen at the start. It stands on a 2x2 block of walls
+// (all four cells must be walls without towers). Handles deployment, repositioning,
+// experience, levels, talents and targeting. Combat itself lives in combat.js.
+// A hero is either in reserve (wallId 0), walking to a block (moving > 0) or deployed.
+// h.wallIds lists the four walls of its block; h.wallId is the top-left one.
 import { heroStats } from './heroStats.js';
 
 export class HeroSystem {
   #heroes = new Map();
   #nextId = 1;
 
-  /** @param {{walls, zombies, economy, events, rng, types, rules, economyConfig}} deps */
-  constructor({ walls, zombies, economy, events, rng, types, rules, economyConfig }) {
-    Object.assign(this, { walls, zombies, economy, events, rng, types, rules, economyConfig });
+  /** @param {{walls, zombies, economy, events, rng, types, rules, economyConfig, champion?}} deps */
+  constructor({ walls, zombies, economy, events, rng, types, rules, economyConfig, champion = null }) {
+    Object.assign(this, { walls, zombies, economy, events, rng, types, rules, economyConfig, champion });
     this.usedNames = new Set();
-    // A destroyed or sold wall drops its heroes back into reserve so they can be redeployed.
+    // Losing (or selling) any wall of the block drops the champion back into reserve.
     events.on('wallRemoved', ({ wall, cause }) => {
       for (const id of [...wall.heroes]) {
         const h = this.get(id);
         if (!h) continue;
-        h.wallId = 0;
+        this.#leaveWalls(h);
         h.moving = 0;
         h.targetId = 0;
         this.events.emit('heroUnseated', { hero: h, cause });
       }
       wall.heroes.length = 0;
     });
+  }
+
+  /** Clears the hero from every wall of its block. */
+  #leaveWalls(h) {
+    for (const id of h.wallIds ?? []) {
+      const w = this.walls.get(id);
+      if (w) w.heroes = w.heroes.filter((x) => x !== h.id);
+    }
+    h.wallIds = [];
+    h.wallId = 0;
+    h.block = null;
+  }
+
+  /**
+   * The 2x2 blocks of walls containing `wallId` that this hero could stand on, best first
+   * (the clicked wall as top-left is preferred). Each block is {x, y, walls: [4 walls]}.
+   */
+  blocksAt(heroId, wallId) {
+    const w = this.walls.get(wallId);
+    if (!w) return [];
+    const out = [];
+    for (const [ox, oy] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) {
+      const x = w.x + ox, y = w.y + oy;
+      const cells = [[x, y], [x + 1, y], [x, y + 1], [x + 1, y + 1]].map(([cx, cy]) => this.walls.at(cx, cy));
+      if (cells.some((c) => !c || c.towerId || c.heroes.some((id) => id !== heroId))) continue;
+      out.push({ x, y, walls: cells });
+    }
+    return out;
   }
 
   get(id) { return this.#heroes.get(id) ?? null; }
@@ -51,6 +81,13 @@ export class HeroSystem {
   applyStats(h) {
     const ratio = h.maxHp ? h.hp / h.maxHp : 1;
     h.stats = heroStats(this.types[h.type], h.level, h.talents);
+    const c = this.champion;
+    if (c) {
+      // The champion is a giant: much tougher, hits harder, reaches further.
+      h.stats.maxHp = Math.round(h.stats.maxHp * c.hpMult);
+      h.stats.damage = Math.round(h.stats.damage * c.damageMult * 10) / 10;
+      h.stats.range += c.rangeAdd;
+    }
     h.maxHp = h.stats.maxHp;
     h.hp = Math.round(h.maxHp * ratio);
   }
@@ -61,23 +98,29 @@ export class HeroSystem {
     return Math.round(t.cost * (1 + this.rules.recruitCostGrowth * this.#heroes.size));
   }
 
-  canRecruit(typeKey) {
+  canRecruit(typeKey, { free = false } = {}) {
     const t = this.types[typeKey];
     if (!t) return { ok: false, reason: 'unknown_type' };
-    if (!this.economy.canAfford(this.recruitCost(typeKey))) return { ok: false, reason: 'insufficient_gold' };
+    if (this.#heroes.size >= (this.rules.maxHeroes ?? Infinity)) return { ok: false, reason: 'hero_limit' };
+    if (!free && !this.economy.canAfford(this.recruitCost(typeKey))) return { ok: false, reason: 'insufficient_gold' };
     return { ok: true };
   }
 
-  /** Pays and creates a hero in reserve. Returns the hero or null. */
-  recruit(typeKey) {
-    const check = this.canRecruit(typeKey);
+  /** The run's champion, chosen at the start: free, and the only hero allowed. */
+  recruitChampion(typeKey) {
+    return this.recruit(typeKey, { free: true });
+  }
+
+  /** Creates a hero in reserve (paying unless free). Returns the hero or null. */
+  recruit(typeKey, { free = false } = {}) {
+    const check = this.canRecruit(typeKey, { free });
     if (!check.ok) {
       this.events.emit('actionRejected', { action: 'recruit', reason: check.reason });
       return null;
     }
     const t = this.types[typeKey];
-    const price = this.recruitCost(typeKey);
-    if (!this.economy.trySpend(price, `recruit:${typeKey}`)) return null;
+    const price = free ? 0 : this.recruitCost(typeKey);
+    if (price && !this.economy.trySpend(price, `recruit:${typeKey}`)) return null;
     const hero = {
       id: this.#nextId++,
       type: typeKey,
@@ -90,6 +133,8 @@ export class HeroSystem {
       stats: null,
       invested: price,
       wallId: 0,
+      wallIds: [],
+      block: null,
       moving: 0,
       cooldown: 0,
       abilityCooldowns: {},
@@ -121,14 +166,16 @@ export class HeroSystem {
     if (!h) return { ok: false, reason: 'no_hero' };
     if (h.fallen) return { ok: false, reason: 'fallen' };
     if (!w) return { ok: false, reason: 'no_wall' };
-    if (h.wallId === wallId) return { ok: false, reason: 'already_there' };
-    if (w.heroes.length >= w.heroCapacity) return { ok: false, reason: 'wall_full' };
-    return { ok: true };
+    const blocks = this.blocksAt(heroId, wallId);
+    if (!blocks.length) return { ok: false, reason: 'needs_block' };
+    const b = blocks[0];
+    if (h.block && h.block.x === b.x && h.block.y === b.y) return { ok: false, reason: 'already_there' };
+    return { ok: true, block: b };
   }
 
   /**
-   * Assigns a hero to a wall. From reserve the hero appears at once; moving between walls
-   * takes rules.repositionTime seconds during which the hero cannot attack.
+   * Places the champion on a 2x2 block of walls containing `wallId`. From reserve it appears
+   * at once; moving between blocks takes rules.repositionTime seconds without attacking.
    */
   deploy(heroId, wallId) {
     const check = this.canDeploy(heroId, wallId);
@@ -137,14 +184,16 @@ export class HeroSystem {
       return false;
     }
     const h = this.get(heroId);
-    const from = h.wallId ? this.walls.get(h.wallId) : null;
-    if (from) from.heroes.splice(from.heroes.indexOf(h.id), 1);
-    const w = this.walls.get(wallId);
-    w.heroes.push(h.id);
-    h.wallId = wallId;
-    h.moving = from ? this.rules.repositionTime : 0;
+    const wasDeployed = !!h.wallId;
+    this.#leaveWalls(h);
+    const b = check.block;
+    for (const w of b.walls) w.heroes = [h.id];
+    h.wallIds = b.walls.map((w) => w.id);
+    h.wallId = h.wallIds[0];
+    h.block = { x: b.x, y: b.y };
+    h.moving = wasDeployed ? this.rules.repositionTime : 0;
     h.targetId = 0;
-    this.events.emit('heroDeployed', { hero: h, wall: w, from });
+    this.events.emit('heroDeployed', { hero: h, wall: b.walls[0], block: h.block });
     return true;
   }
 
@@ -157,8 +206,7 @@ export class HeroSystem {
     const h = this.get(heroId);
     if (!h) return false;
     const refund = this.refundValue(heroId);
-    const w = h.wallId ? this.walls.get(h.wallId) : null;
-    if (w) w.heroes.splice(w.heroes.indexOf(h.id), 1);
+    this.#leaveWalls(h);
     this.#heroes.delete(h.id);
     this.usedNames.delete(h.name);
     this.economy.earn(refund, `dismiss:${h.type}`);
@@ -181,11 +229,9 @@ export class HeroSystem {
       this.events.emit('heroEndangered', h);
     }
     if (h.hp <= 0) {
-      const w = this.walls.get(h.wallId);
-      if (w) w.heroes.splice(w.heroes.indexOf(h.id), 1);
+      this.#leaveWalls(h);
       h.hp = 0;
       h.fallen = true;
-      h.wallId = 0;
       h.moving = 0;
       h.targetId = 0;
       this.events.emit('heroFell', h);
@@ -315,10 +361,9 @@ export class HeroSystem {
   }
 
   // --- position and targeting --------------------------------------------
-  /** World position (x, z) of a deployed hero: the centre of its wall cell. */
+  /** World position (x, z) of a deployed hero: the centre of its 2x2 block. */
   positionOf(h) {
-    const w = this.walls.get(h.wallId);
-    return w ? { x: w.x + 0.5, z: w.y + 0.5 } : null;
+    return h.block ? { x: h.block.x + 1, z: h.block.y + 1 } : null;
   }
 
   /** Picks a target in range according to the hero's targeting preference. */

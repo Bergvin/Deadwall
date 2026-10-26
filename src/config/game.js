@@ -49,6 +49,8 @@ export { ZOMBIES, ELITE, WAVE_TABLE } from './enemies.js';
 
 // Hero classes, rules and targeting modes live in heroes.js.
 export { HEROES, HERO_RULES, TARGETING } from './heroes.js';
+// Elemental towers and the champion hero rules live in towers.js.
+export { TOWERS, TOWER_RULES, CHAMPION } from './towers.js';
 
 export const WAVES = {
   /** Seconds before wave 1 starts on its own (the player can start it earlier). */
@@ -72,7 +74,8 @@ export const SCORE = {
 
 /**
  * Wall types. All share the same modular pieces so mixed lines connect; each type has its
- * own tint and decorations (see render/wallView.js). heroCapacity > 1 makes a platform.
+ * own tint and decorations (see render/wallView.js). Every wall can carry one tower, and
+ * a 2x2 block of walls carries the champion hero (heroCapacity is per-wall occupancy).
  * armor: fraction of zombie damage ignored. thorns: damage per second dealt to every zombie
  * attacking it. arcane: aura that slows and pulses magic damage.
  */
@@ -80,12 +83,12 @@ export const WALLS = {
   stone: {
     name: 'Stone Wall', short: 'Stone',
     cost: 20, maxHp: 300, heroCapacity: 1, armor: 0,
-    description: 'Affordable basic wall. Moderate health, holds one hero.',
+    description: 'Affordable basic wall. Moderate health, can carry a tower.',
   },
   reinforced: {
     name: 'Reinforced Wall', short: 'Reinforced',
-    cost: 45, maxHp: 750, heroCapacity: 2, armor: 0.2,
-    description: 'Timber and iron braced. Very durable, resists heavy blows, holds two heroes.',
+    cost: 45, maxHp: 750, heroCapacity: 1, armor: 0.2,
+    description: 'Timber and iron braced. Very durable and resists heavy blows: the best base for towers.',
   },
   spiked: {
     name: 'Spiked Wall', short: 'Spiked',

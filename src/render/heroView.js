@@ -2,6 +2,7 @@
 // hit box per hero for picking. Animation roles per model come from config/assets.js.
 import * as THREE from 'three';
 import { MODELS } from '../config/assets.js';
+import { CHAMPION } from '../config/game.js';
 
 /** Height of the wall walkway the heroes stand on. */
 const WALKWAY_Y = 1.18;
@@ -32,6 +33,7 @@ export class HeroView {
   #create(hero) {
     const model = this.heroTypes[hero.type].model;
     const root = this.assets.instance(model);
+    root.scale.multiplyScalar(CHAMPION.modelScale); // the champion is a giant
     const mixer = new THREE.AnimationMixer(root);
     const clips = this.assets.clips(model);
     const actions = {};
@@ -108,15 +110,13 @@ export class HeroView {
   /** Syncs nodes with hero state and advances animations by `dt` (scaled game time). */
   update(dt, walls) {
     for (const h of this.heroes.all()) {
-      const w = h.wallId ? walls.get(h.wallId) : null;
+      const p = this.heroes.positionOf(h);
       let node = this.#nodes.get(h.id);
-      if (!w) { if (node) node.root.visible = false; continue; }
+      if (!p) { if (node) node.root.visible = false; continue; }
       node ??= this.#create(h);
       node.root.visible = true;
-      // Spread multiple heroes on one wall across the cell.
-      const slot = w.heroes.indexOf(h.id), n = w.heroes.length;
-      const off = n > 1 ? (slot / (n - 1) - 0.5) * 0.5 : 0;
-      node.root.position.set(w.x + 0.5 + off, WALKWAY_Y, w.y + 0.5);
+      // The champion stands in the middle of its 2x2 block of walls.
+      node.root.position.set(p.x, WALKWAY_Y, p.z);
       node.root.rotation.y = h.facing;
       this.#setBase(node, h.moving > 0 ? 'walk' : h.targetId ? 'ready' : 'idle');
       node.mixer.update(dt);

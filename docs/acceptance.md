@@ -62,7 +62,20 @@ How each acceptance item was verified. **Node** = automated test in `tests/` (ru
 | Console errors | Browser: no runtime errors during full runs (phases 2–6) |
 | Bad or unavailable localStorage | Node: `save data is validated and corrupt saves fall back to defaults` (corrupt JSON, invalid fields, throwing storage) · Browser: corrupted save → game starts with defaults (phase 2) |
 
-## Balance (phase 6)
+## Balance (tower redesign)
+
+`node tools/simulate.js 6 all 150` after replacing recruitable heroes with elemental towers and one 2×2 champion:
+
+| Strategy | Average wave reached | Reading |
+|---|---|---|
+| none | 1 | No defence falls at once |
+| walls + champion only | ~5.5 | The champion alone cannot hold |
+| fire / earth / wind / water only | ~18 / ~16 / ~18 / ~13 | One element stalls; water is support |
+| mixed elements + upgrades + talents | ~37.5 | Combining elements is clearly strongest |
+
+Changes made to reach this: tower price grows 5% per tower standing; enemy HP grows `1 + 0.1(n−1) + 0.02(n−1)²`; earth 62 dmg / 1.6 s / range 5, no splash.
+
+## Balance (phase 6, before the redesign)
 
 `node tools/simulate.js 5 all 150` plays scripted strategies headless (deterministic seeds):
 

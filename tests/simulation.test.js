@@ -6,6 +6,7 @@ import { ZSTATE } from '../src/core/zombies.js';
 import { MAP, ZOMBIES, HEROES, WAVES, WAVE_TABLE, ELITE } from '../src/config/game.js';
 import { waveComposition } from '../src/core/waves.js';
 import { sanitize, loadSave, writeSave, recordRun } from '../src/core/save.js';
+import { buildBlock } from './helpers.js';
 
 const DT = 1 / 60;
 const gate = { x: MAP.gateX, y: MAP.castleWallRow };
@@ -77,8 +78,9 @@ test('kills grant gold and XP exactly once', () => {
 
 test('archer on a wall shoots walkers; projectiles hit once each', () => {
   const sim = new Simulation({ seed: 6 });
-  const wall = sim.walls.build('stone', 15, 14);
-  const hero = sim.heroes.recruit('archer');
+  const wall = buildBlock(sim, 15, 14);
+  const hero = sim.heroes.recruitChampion('archer');
+  hero.autoCast = false;
   assert.ok(sim.heroes.deploy(hero.id, wall.id));
   const z = sim.zombies.spawn('walker', 15.5, 10.5, 3); // 180 hp
   let hits = 0;
@@ -104,23 +106,26 @@ test('dead enemies stop attacking and are cleaned up', () => {
   assert.equal(sim.zombies.list.length, 0);
 });
 
-test('hero capacity, no duplicates, reposition delay and unseat on destruction', () => {
+test('champion: one per run, needs a free 2x2 block, repositions with a delay, unseats on loss', () => {
   const sim = new Simulation({ seed: 8 });
   sim.economy.earn(1000);
-  const a = sim.walls.build('stone', 10, 12);
-  const b = sim.walls.build('stone', 11, 12);
-  const h1 = sim.heroes.recruit('archer');
-  const h2 = sim.heroes.recruit('archer');
-  assert.ok(sim.heroes.deploy(h1.id, a.id));
-  assert.equal(sim.heroes.canDeploy(h2.id, a.id).reason, 'wall_full');
-  assert.equal(sim.heroes.deploy(h1.id, a.id), false, 'already there');
-  assert.ok(sim.heroes.deploy(h1.id, b.id));
-  assert.deepEqual(a.heroes, []);
-  assert.deepEqual(b.heroes, [h1.id], 'hero exists on exactly one wall');
-  assert.ok(h1.moving > 0, 'repositioning takes time');
-  sim.walls.destroy(b.id);
-  assert.equal(h1.wallId, 0, 'back to reserve');
-  assert.equal(sim.heroes.count, 2);
+  const h = sim.heroes.recruitChampion('archer');
+  assert.equal(sim.heroes.recruit('mage'), null, 'only one hero per run');
+  const lone = sim.walls.build('stone', 5, 5);
+  assert.equal(sim.heroes.canDeploy(h.id, lone.id).reason, 'needs_block');
+  const a = buildBlock(sim, 10, 12);
+  const b = buildBlock(sim, 12, 18);
+  assert.ok(sim.heroes.deploy(h.id, a.id));
+  assert.equal(h.wallIds.length, 4);
+  assert.equal(sim.heroes.deploy(h.id, a.id), false, 'already there');
+  assert.equal(sim.towers.canBuild('fire', a.id).reason, 'hero_there', 'no tower under the champion');
+  assert.ok(sim.heroes.deploy(h.id, b.id));
+  assert.deepEqual(a.heroes, [], 'old block cleared');
+  assert.equal([...sim.walls.all()].filter((w) => w.heroes.includes(h.id)).length, 4, 'on exactly four walls');
+  assert.ok(h.moving > 0, 'repositioning takes time');
+  sim.walls.destroy(sim.walls.at(13, 19).id);
+  assert.equal(h.wallId, 0, 'losing one block wall sends it to reserve');
+  assert.equal([...sim.walls.all()].filter((w) => w.heroes.length).length, 0);
 });
 
 test('recruit/dismiss cannot generate gold', () => {
@@ -131,7 +136,6 @@ test('recruit/dismiss cannot generate gold', () => {
     if (h) sim.heroes.dismiss(h.id);
   }
   assert.ok(sim.economy.gold < start);
-  assert.equal(sim.heroes.recruit('archer') && true, true);
   sim.economy.trySpend(sim.economy.gold);
   assert.equal(sim.heroes.recruit('archer'), null, 'cannot recruit without gold');
 });
@@ -172,8 +176,9 @@ test('undefended fortress falls and the game ends exactly once', () => {
 test('same seed + same actions = same outcome (deterministic)', () => {
   const play = () => {
     const sim = new Simulation({ seed: 42 });
-    const w = sim.walls.build('stone', 15, 15);
-    sim.heroes.deploy(sim.heroes.recruit('archer').id, w.id);
+    const w = buildBlock(sim, 15, 15);
+    sim.heroes.deploy(sim.heroes.recruitChampion('archer').id, w.id);
+    sim.towers.build('fire', sim.walls.build('stone', 13, 15).id);
     sim.waves.startNext();
     sim.run(40);
     return [sim.economy.gold, sim.stats.kills, sim.fortress.hp, sim.zombies.list.length];

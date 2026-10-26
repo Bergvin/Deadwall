@@ -29,6 +29,10 @@ export const REJECT_TEXT = {
   level_too_low: 'Hero level too low',
   fallen: 'That hero has fallen; revive them between waves',
   max_level: 'Already at maximum level',
+  needs_block: 'The champion needs a free 2x2 block of walls (no towers on it)',
+  has_tower: 'That wall already has a tower',
+  hero_there: 'The champion stands there',
+  hero_limit: 'You can only have one champion',
   wave_active: 'Only possible between waves',
 };
 
@@ -36,8 +40,9 @@ export class Interaction {
   /**
    * @param {{canvas, cam, sim, wallView, heroView, overlay, hud, cameraCfg, signal}} deps
    */
-  constructor({ canvas, cam, sim, wallView, heroView, overlay, hud, cameraCfg, signal }) {
-    Object.assign(this, { canvas, cam, sim, wallView, heroView, overlay, hud, cameraCfg });
+  constructor({ canvas, cam, sim, wallView, heroView, towerView, overlay, hud, cameraCfg, signal }) {
+    Object.assign(this, { canvas, cam, sim, wallView, heroView, towerView, overlay, hud, cameraCfg });
+    this.towers = sim.towers;
     this.walls = sim.walls;
     this.heroes = sim.heroes;
     this.combat = sim.combat;
@@ -89,6 +94,12 @@ export class Interaction {
   }
 
   /** Waits for a click on a wall to place (or move) the hero. */
+  /** Waits for clicks on walls to build towers of `towerType` (stays active until cancelled). */
+  enterTowerBuild(towerType) {
+    this.select(null);
+    this.#setMode({ kind: 'tower', towerType });
+  }
+
   enterDeploy(heroId) {
     if (!this.heroes.get(heroId)) return;
     this.#setMode({ kind: 'deploy', heroId });
@@ -162,9 +173,11 @@ export class Interaction {
     this.selection = sel;
     const w = sel?.kind === 'wall' ? this.walls.get(sel.id) : null;
     const h = sel?.kind === 'hero' ? this.heroes.get(sel.id) : null;
-    const hw = h?.wallId ? this.walls.get(h.wallId) : null;
-    const at = w ?? hw ?? (sel?.kind === 'gate' ? this.sim.fortress.gate : null);
-    this.overlay.setSelection(at ? { x: at.x, y: at.y } : null);
+    const t = sel?.kind === 'tower' ? this.towers.get(sel.id) : null;
+    const tw = t ? this.walls.get(t.wallId) : null;
+    const hb = h?.block ? { x: h.block.x, y: h.block.y, size: 2 } : null;
+    const at = w ?? tw ?? hb ?? (sel?.kind === 'gate' ? this.sim.fortress.gate : null);
+    this.overlay.setSelection(at ? { x: at.x, y: at.y, size: at.size ?? 1 } : null);
     this.hud.showSelection(sel);
   }
 
@@ -195,6 +208,21 @@ export class Interaction {
       if (o.userData.wallId) return this.walls.get(o.userData.wallId);
     }
     return null;
+  }
+
+  towerAt(clientX, clientY) {
+    this.towerView.group.updateMatrixWorld();
+    const hit = this.#ray(clientX, clientY).intersectObjects(this.towerView.pickables, true)[0];
+    return hit ? this.towers.get(hit.object.userData.towerId) : null;
+  }
+
+  #towerAt(clientX, clientY) {
+    const cell = this.cellAt(clientX, clientY);
+    const w = this.wallAt(clientX, clientY) ?? (cell ? this.walls.at(cell.x, cell.y) : null);
+    const check = w ? this.towers.canBuild(this.mode.towerType, w.id) : { ok: false, reason: 'no_wall' };
+    if (!check.ok) { this.hud.toast(REJECT_TEXT[check.reason] ?? 'Cannot build a tower there'); return; }
+    this.towers.build(this.mode.towerType, w.id);
+    this.#refreshHover();
   }
 
   heroAt(clientX, clientY) {
@@ -256,13 +284,17 @@ export class Interaction {
       this.#refreshHover();
     } else if (this.mode.kind === 'deploy') {
       this.#deployAt(e.clientX, e.clientY);
+    } else if (this.mode.kind === 'tower') {
+      this.#towerAt(e.clientX, e.clientY);
     } else if (this.mode.kind === 'ability') {
       this.#abilityAt(e.clientX, e.clientY);
     } else {
       const h = this.heroAt(e.clientX, e.clientY);
       if (h) { this.select({ kind: 'hero', id: h.id }); return; }
+      const t = this.towerAt(e.clientX, e.clientY);
+      if (t) { this.select({ kind: 'tower', id: t.id }); return; }
       const w = this.wallAt(e.clientX, e.clientY);
-      if (w) { this.select({ kind: 'wall', id: w.id }); return; }
+      if (w) { this.select(w.towerId ? { kind: 'tower', id: w.towerId } : { kind: 'wall', id: w.id }); return; }
       const c = this.cellAt(e.clientX, e.clientY);
       const gate = this.sim.fortress.gate;
       // The gate (and the wall cells beside it) select the fortress gate.
@@ -309,15 +341,22 @@ export class Interaction {
       case 'Digit2': this.enterBuild('reinforced'); break;
       case 'Digit3': this.enterBuild('spiked'); break;
       case 'Digit4': this.enterBuild('arcane'); break;
-      case 'KeyU':
-        if (sel?.kind === 'wall') {
-          const r = this.walls.canUpgrade(sel.id);
-          if (r.ok) this.walls.upgrade(sel.id); else this.hud.toast(REJECT_TEXT[r.reason] ?? 'Cannot upgrade');
+      case 'Digit5': this.enterTowerBuild('fire'); break;
+      case 'Digit6': this.enterTowerBuild('earth'); break;
+      case 'Digit7': this.enterTowerBuild('wind'); break;
+      case 'Digit8': this.enterTowerBuild('water'); break;
+      case 'KeyU': {
+        const sys = sel?.kind === 'wall' ? this.walls : sel?.kind === 'tower' ? this.towers : null;
+        if (sys) {
+          const r = sys.canUpgrade(sel.id);
+          if (r.ok) sys.upgrade(sel.id); else this.hud.toast(REJECT_TEXT[r.reason] ?? 'Cannot upgrade');
         }
         break;
+      }
       case 'Escape': this.cancel(); break;
       case 'Delete': case 'Backspace':
         if (sel?.kind === 'wall') this.walls.sell(sel.id);
+        if (sel?.kind === 'tower') this.towers.sell(sel.id);
         break;
       case 'KeyR':
         if (sel?.kind === 'wall' && !this.walls.repair(sel.id) && this.walls.repairCost(sel.id)) this.hud.toast('Not enough gold');
@@ -341,7 +380,7 @@ export class Interaction {
 
   #refreshHover() {
     const cell = this.hoverCell;
-    this.overlay.setHeroSlots(this.mode.kind === 'deploy' ? this.#slotMarkers() : []);
+    this.overlay.setHeroSlots(this.mode.kind === 'deploy' || this.mode.kind === 'tower' ? this.#slotMarkers() : []);
     if (this.mode.kind === 'build') {
       this.overlay.setHover(null);
       const plan = this.plan();
@@ -382,24 +421,38 @@ export class Interaction {
     }
     if (this.mode.kind === 'deploy') {
       const w = p ? this.wallAt(p.x, p.y) : null;
+      const block = w ? this.heroes.canDeploy(this.mode.heroId, w.id).block : null;
+      // Show the whole 2x2 block the champion would take.
+      this.overlay.setSelection(block ? { x: block.x, y: block.y, size: 2 } : null);
       this.overlay.setHover(w ? { x: w.x, y: w.y } : null);
-      const ok = w && this.heroes.canDeploy(this.mode.heroId, w.id).ok;
+      this.canvas.style.cursor = w ? (block ? 'copy' : 'not-allowed') : 'default';
+      return;
+    }
+    if (this.mode.kind === 'tower') {
+      const w = p ? this.wallAt(p.x, p.y) : null;
+      this.overlay.setHover(w ? { x: w.x, y: w.y } : null);
+      const ok = w && this.towers.canBuild(this.mode.towerType, w.id).ok;
       this.canvas.style.cursor = w ? (ok ? 'copy' : 'not-allowed') : 'default';
       return;
     }
     const h = cell && p ? this.heroAt(p.x, p.y) : null;
     const w = !h && cell && p ? this.wallAt(p.x, p.y) : null;
-    const hw = h?.wallId ? this.walls.get(h.wallId) : null;
-    const at = w ?? hw;
-    this.overlay.setHover(at ? { x: at.x, y: at.y } : cell);
+    const at = w ?? (h?.block ? { x: h.block.x, y: h.block.y, size: 2 } : null);
+    this.overlay.setHover(at ? { x: at.x, y: at.y, size: at.size } : cell);
     this.canvas.style.cursor = at ? 'pointer' : 'default';
   }
 
-  /** Markers on every wall while deploying: green = free slot, red = full. */
+  /**
+   * Markers on every wall: when placing a tower, green = free for a tower; when placing the
+   * champion, green = part of at least one free 2x2 block.
+   */
   #slotMarkers() {
     const out = [];
     for (const w of this.walls.all()) {
-      out.push({ x: w.x, y: w.y, free: w.heroes.length < w.heroCapacity && !w.heroes.includes(this.mode.heroId) });
+      const free = this.mode.kind === 'tower'
+        ? !w.towerId && !w.heroes.length
+        : this.heroes.blocksAt(this.mode.heroId, w.id).length > 0;
+      out.push({ x: w.x, y: w.y, free });
     }
     return out;
   }

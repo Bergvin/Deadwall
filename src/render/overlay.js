@@ -103,14 +103,22 @@ export class Overlay {
     this.gridLines.visible = v;
   }
 
+  /** Highlights a cell, or a size x size block whose top-left is (x, y). */
   setHover(cell) {
     this.hover.visible = !!cell;
-    if (cell) this.hover.position.set(cell.x + 0.5, 0.03, cell.y + 0.5);
+    if (!cell) return;
+    const s = cell.size ?? 1;
+    this.hover.position.set(cell.x + s / 2, 0.03, cell.y + s / 2);
+    this.hover.scale.set(s, s, 1);
   }
 
+  /** Selection box around a cell, or around a size x size block (the champion's 2x2). */
   setSelection(cell) {
     this.selection.visible = !!cell;
-    if (cell) this.selection.position.set(cell.x + 0.5, 0.725, cell.y + 0.5);
+    if (!cell) return;
+    const s = cell.size ?? 1;
+    this.selection.position.set(cell.x + s / 2, 0.725, cell.y + s / 2);
+    this.selection.scale.set(s, 1, s);
   }
 
   /**

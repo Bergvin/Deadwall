@@ -13,6 +13,7 @@ import { ZoneSystem } from './zones.js';
 import { CombatSystem } from './combat.js';
 import { WallEffectSystem } from './wallEffects.js';
 import { HazardSystem } from './hazards.js';
+import { TowerSystem } from './towers.js';
 import { WaveSystem, PHASE } from './waves.js';
 import { createRng } from './rng.js';
 
@@ -39,6 +40,7 @@ export class Simulation {
     this.heroes = new HeroSystem({
       walls: this.walls, zombies: this.zombies, economy: this.economy,
       events: this.events, rng: this.rng, types: c.HEROES, rules: c.HERO_RULES, economyConfig: c.ECONOMY,
+      champion: c.CHAMPION,
     });
     this.zones = new ZoneSystem({ zombies: this.zombies, events: this.events });
     this.projectiles = new ProjectileSystem({
@@ -52,12 +54,17 @@ export class Simulation {
       zombies: this.zombies, economy: this.economy, events: this.events, rng: this.rng,
       cfg: c.WAVES, table: c.WAVE_TABLE, elite: c.ELITE, map: c.MAP,
     });
+    this.towers = new TowerSystem({
+      walls: this.walls, zombies: this.zombies, projectiles: this.projectiles, economy: this.economy,
+      events: this.events, types: c.TOWERS, rules: c.TOWER_RULES,
+    });
     this.wallEffects = new WallEffectSystem({ walls: this.walls, zombies: this.zombies, events: this.events });
     this.hazards = new HazardSystem({ zombies: this.zombies, heroes: this.heroes, events: this.events, types: c.ZOMBIES });
 
     // Cross-system rules.
     this.walls.priceMultiplier = () => (this.waves.phase === PHASE.ACTIVE ? c.ECONOMY.combatBuildMultiplier : 1);
     this.fortress.priceMultiplier = this.walls.priceMultiplier;
+    this.towers.priceMultiplier = this.walls.priceMultiplier;
     this.heroes.reviveAllowed = () => this.waves.phase === PHASE.PREP;
     this.walls.damageModifier = (w) => this.combat.wallDamageMultiplier(w);
     this.walls.placementBlocker = (x, y) => (this.zombies.cellCount[this.grid.index(x, y)] ? 'enemy_present' : null);
@@ -65,27 +72,29 @@ export class Simulation {
     const ev = this.events;
     ev.on('zombieKilled', ({ zombie, killerId }) => {
       this.heroes.awardKillXp(zombie);
-      const killer = this.heroes.get(killerId);
+      const killer = unit(killerId);
       if (killer) killer.kills++;
       this.stats.kills++;
       this.stats.score += zombie.reward * c.SCORE.perKillGold;
     });
     // Per-hero damage statistics: damage this wave, and DPS over the last finished wave.
     this.waveStartTime = 0;
+    // Statistics are kept for every damage source: the champion and the towers.
+    const unit = (id) => (id ? this.heroes.get(id) ?? this.towers.get(id) : null);
     ev.on('zombieDamaged', ({ amount, sourceHeroId }) => {
-      const h = sourceHeroId ? this.heroes.get(sourceHeroId) : null;
-      if (h) { h.waveDamage += amount; h.totalDamage += amount; }
+      const u = unit(sourceHeroId);
+      if (u) { u.waveDamage += amount; u.totalDamage += amount; }
     });
     ev.on('waveStarted', () => {
       this.waveStartTime = this.time;
-      for (const h of this.heroes.all()) h.waveDamage = 0;
+      for (const u of [...this.heroes.all(), ...this.towers.all()]) u.waveDamage = 0;
     });
     ev.on('goldChanged', ({ delta }) => { if (delta > 0) this.stats.goldEarned += delta; });
     ev.on('waveCleared', () => {
       const duration = Math.max(1, this.time - this.waveStartTime);
-      for (const h of this.heroes.all()) {
-        h.lastWaveDamage = h.waveDamage;
-        h.lastWaveDps = h.waveDamage / duration;
+      for (const u of [...this.heroes.all(), ...this.towers.all()]) {
+        u.lastWaveDamage = u.waveDamage;
+        u.lastWaveDps = u.waveDamage / duration;
       }
       this.heroes.healAll();
       this.stats.wavesCleared++;
@@ -106,6 +115,7 @@ export class Simulation {
     this.waves.step(dt);
     this.zombies.step(dt);
     this.combat.step(dt);
+    this.towers.step(dt);
     this.projectiles.step(dt);
     this.zones.step(dt);
     this.wallEffects.step(dt);

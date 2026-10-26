@@ -49,10 +49,11 @@ export class CombatSystem {
     for (const h of this.heroes.active()) {
       const s = h.stats;
       if (s.wallGuard > 0) {
-        if (h.wallId === wall.id) m *= 1 - s.wallGuard;
-        else if (s.guardAdjacent) {
-          const hw = this.walls.get(h.wallId);
-          if (hw && Math.abs(hw.x - wall.x) + Math.abs(hw.y - wall.y) === 1) m *= 1 - s.wallGuard / 2;
+        // The champion guards every wall of its 2x2 block (and with Guardian, the ring around it).
+        if (h.wallIds.includes(wall.id)) m *= 1 - s.wallGuard;
+        else if (s.guardAdjacent && h.block) {
+          const dx = wall.x - h.block.x, dy = wall.y - h.block.y;
+          if (dx >= -1 && dx <= 2 && dy >= -1 && dy <= 2) m *= 1 - s.wallGuard / 2;
         }
       }
       if (s.auraGuard > 0) {

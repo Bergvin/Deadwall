@@ -23,6 +23,8 @@ export const HERO_RULES = {
   reviveCostFactor: 0.35,
   /** Each hero already recruited raises the next recruit's price by this fraction. */
   recruitCostGrowth: 0.1,
+  /** One champion per run: chosen for free at the start, no further recruiting. */
+  maxHeroes: 1,
   names: ['Aldric', 'Brienne', 'Cedric', 'Daria', 'Edmund', 'Freya', 'Garrick', 'Helena',
     'Ivor', 'Johanna', 'Kendrick', 'Liora', 'Merek', 'Nessa', 'Osric', 'Rowena', 'Tobias', 'Wynn',
     'Alaric', 'Beatrix', 'Corwin', 'Elspeth', 'Godric', 'Isolde', 'Leofric', 'Maude', 'Percival', 'Sybil'],
