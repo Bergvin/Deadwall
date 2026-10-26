@@ -70,8 +70,23 @@ export class Simulation {
       this.stats.kills++;
       this.stats.score += zombie.reward * c.SCORE.perKillGold;
     });
+    // Per-hero damage statistics: damage this wave, and DPS over the last finished wave.
+    this.waveStartTime = 0;
+    ev.on('zombieDamaged', ({ amount, sourceHeroId }) => {
+      const h = sourceHeroId ? this.heroes.get(sourceHeroId) : null;
+      if (h) { h.waveDamage += amount; h.totalDamage += amount; }
+    });
+    ev.on('waveStarted', () => {
+      this.waveStartTime = this.time;
+      for (const h of this.heroes.all()) h.waveDamage = 0;
+    });
     ev.on('goldChanged', ({ delta }) => { if (delta > 0) this.stats.goldEarned += delta; });
     ev.on('waveCleared', () => {
+      const duration = Math.max(1, this.time - this.waveStartTime);
+      for (const h of this.heroes.all()) {
+        h.lastWaveDamage = h.waveDamage;
+        h.lastWaveDps = h.waveDamage / duration;
+      }
       this.heroes.healAll();
       this.stats.wavesCleared++;
       this.stats.score += c.SCORE.perWaveCleared;

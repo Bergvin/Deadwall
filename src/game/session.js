@@ -34,6 +34,12 @@ export class Session {
       deploy: (heroId) => this.input.enterDeploy(heroId),
       useAbility: (heroId, id) => this.input.useAbility(heroId, id),
       select: (sel) => this.input.select(sel),
+      focusHero: (id) => {
+        const h = sim.heroes.get(id);
+        const p = h && sim.heroes.positionOf(h);
+        if (p) { cam.target.set(p.x, 0, p.z + 1); cam.update(0); }
+        this.input.select({ kind: 'hero', id });
+      },
       startWave: () => sim.waves.startNext(),
       togglePause: () => shared.togglePause(),
       setSpeed: (s) => { loop.speed = s; },

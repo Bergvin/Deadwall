@@ -264,3 +264,16 @@ test('auto-cast holds area abilities for a pack and buffs walls under attack', (
   assert.ok(p.wall.buffs.some((b) => b.kind === 'holy'), 'holy shield on the hurt wall');
   assert.ok(hero.autoCast);
 });
+
+test('hero damage is tracked per wave and becomes last-wave DPS when the wave ends', () => {
+  const { sim, hero } = setup('archer');
+  sim.waves.startNext();
+  const z = dummy(sim, 15.5, 11, 120);
+  sim.waves.queue.length = 0;
+  sim.run(10);
+  assert.ok(!z.alive && sim.waves.phase === 'prep', 'wave cleared');
+  assert.ok(hero.lastWaveDamage >= 119 && hero.lastWaveDps > 0);
+  sim.waves.startNext();
+  assert.equal(hero.waveDamage, 0, 'reset at the next wave');
+  assert.ok(hero.lastWaveDps > 0, 'last wave value kept during the next wave');
+});

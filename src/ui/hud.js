@@ -7,6 +7,7 @@
 import './hud.css';
 import { PHASE } from '../core/waves.js';
 import { heroStats, abilityList } from '../core/heroStats.js';
+import { HeroRoster } from './roster.js';
 
 const h = (tag, cls, html) => {
   const el = document.createElement(tag);
@@ -38,6 +39,7 @@ export class Hud {
     this.side = h('div', 'panel');
     this.side.hidden = true;
     this.el.append(this.side);
+    this.roster = new HeroRoster(this.el, sim, { select: (sel) => actions.select(sel), focus: (id) => actions.focusHero(id) });
     this.el.append(h('div', 'help',
       '<kbd>B</kbd> build wall &nbsp; <kbd>LMB</kbd> place / select &nbsp; drag for a line<br>'
       + '<kbd>RMB</kbd> cancel &nbsp; <kbd>RMB</kbd> drag / <kbd>WASD</kbd> pan &nbsp; <kbd>Wheel</kbd> zoom<br>'
@@ -199,6 +201,7 @@ export class Hud {
   /** Builds the panel for the selection (or hides it). */
   showSelection(sel) {
     this.selection = sel;
+    this.roster?.setSelected(sel?.kind === 'hero' ? sel.id : 0);
     const sim = this.sim;
     const wall = sel?.kind === 'wall' ? sim.walls.get(sel.id) : null;
     const hero = sel?.kind === 'hero' ? sim.heroes.get(sel.id) : null;
@@ -520,6 +523,7 @@ export class Hud {
     }
     if (this.preview.innerHTML !== pv) this.preview.innerHTML = pv;
     this.preview.hidden = !pv;
+    this.roster.tick();
     this.dyn?.();
   }
 

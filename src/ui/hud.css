@@ -253,3 +253,29 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 .row.autocast input { accent-color: var(--gold); margin: 0; }
 /* Small label above a hero when it casts (not .ability: that class styles the ability buttons). */
 .floater.cast { color: #cfe4ff; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; padding: 1px 5px; border-radius: 3px; background: rgba(10, 14, 24, 0.55); }
+
+/* --- hero roster (left edge) --- */
+.roster { position: absolute; left: 12px; top: 90px; width: 236px; max-height: calc(100vh - 300px); display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.roster[hidden] { display: none; }
+.roster .rhead { display: flex; align-items: center; gap: 4px; padding: 5px 8px; border-bottom: 1px solid var(--border); }
+.roster .rhead .label { flex: 1; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+.roster .rsort { font: inherit; font-size: 11px; padding: 1px 6px; cursor: pointer; color: var(--muted); background: none; border: 1px solid var(--border); border-radius: 3px; }
+.roster .rsort.active { color: var(--gold); border-color: var(--gold); }
+.roster .rlist { overflow-y: auto; }
+.rrow { position: relative; display: grid; grid-template-columns: 14px 22px 1fr auto 12px; gap: 6px; align-items: center; padding: 4px 8px 7px; cursor: pointer; border-left: 3px solid transparent; }
+.rrow:hover { background: rgba(255, 255, 255, 0.04); }
+.rrow.selected { background: rgba(232, 182, 76, 0.13); border-left-color: var(--gold); }
+.rrow.reserve { opacity: 0.6; }
+.rrow.fallen .rname b { color: #ffb0a8; }
+.rrow .rank { color: var(--muted); font-size: 10px; text-align: right; }
+.rrow .portrait.mini { margin: 0; }
+.rrow .rname { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.rrow .rname b { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rrow .rname i { font-style: normal; font-size: 10px; color: var(--muted); }
+.rrow .rdps { font-size: 12px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.rrow .rstar { color: var(--gold); font-size: 11px; }
+.rrow .rhp { position: absolute; left: 25px; right: 8px; bottom: 3px; height: 2px; background: rgba(255, 255, 255, 0.08); }
+.rrow .rhp > div { height: 100%; }
+@media (max-width: 1100px) {
+  .roster { width: 200px; top: 84px; }
+}

@@ -101,6 +101,11 @@ export class HeroSystem {
       lowWarned: false,
       /** Use abilities automatically (the player can still cast them by hand). */
       autoCast: true,
+      /** Damage dealt in the current wave, and the result of the last finished wave. */
+      waveDamage: 0,
+      lastWaveDamage: 0,
+      lastWaveDps: 0,
+      totalDamage: 0,
     };
     this.applyStats(hero);
     hero.hp = hero.maxHp;
