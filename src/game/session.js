@@ -89,7 +89,7 @@ export class Session {
       if (p) fx.ring(p.x, p.z, 0.8, CLASS_COLOR[hero.type] ?? 0xffffff, 0.4, 1.25);
       // Name the ability above the hero so automatic casts are easy to notice.
       const name = this.sim.config.HEROES[hero.type].abilities[abilityId]?.name;
-      if (p && name) floaters.spawn({ x: p.x, y: 2.6, z: p.z }, name, 'ability');
+      if (p && name) floaters.spawn({ x: p.x, y: 2.5, z: p.z }, name, 'cast');
     });
     ev.on('meleeHit', ({ target, holy, crit }) => {
       effects.burst({ x: target.x, y: 0.7, z: target.z }, {
