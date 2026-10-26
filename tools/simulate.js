@@ -15,7 +15,6 @@ const runs = Number(process.argv[2] ?? 4);
 const which = process.argv[3] ?? 'all';
 const maxMinutes = Number(process.argv[4] ?? 45);
 const DT = 1 / 30;
-const R = Math.hypot;
 
 const STRATEGIES = {
   none: { walls: false, heroes: [] },
@@ -76,6 +75,7 @@ function prepare(sim, st, state) {
       .sort((a, b) => a.y - b.y || Math.abs(a.x - MAP.gateX) - Math.abs(b.x - MAP.gateX))[0];
     if (!free) break;
     const h = heroes.recruit(type);
+    h.autoCast = !!st.abilities; // heroes auto-cast in the game; strategies without abilities turn it off
     heroes.deploy(h.id, free.id);
     state.next++;
   }
@@ -100,39 +100,6 @@ function prepare(sim, st, state) {
   }
 }
 
-/** Uses every ready ability on a sensible target (the densest pack in reach). */
-function castAbilities(sim) {
-  const { heroes, combat, zombies, walls } = sim;
-  for (const h of heroes.active()) {
-    const pos = heroes.positionOf(h);
-    for (const [id, a] of Object.entries(HEROES[h.type].abilities)) {
-      if (!combat.canUse(h.id, id, { x: pos.x, z: pos.z, zombieId: -1, wallId: h.wallId }).ok
-        && combat.canUse(h.id, id, null).reason !== 'no_target') continue;
-      if ((h.abilityCooldowns[id] ?? 0) > 0 || h.level < a.unlock) continue;
-      const reach = combat.abilityReach(h, id), radius = combat.abilityRadius(h, id) || 1.5;
-      const near = [...zombies.inRange(pos.x, pos.z, reach)];
-      if (!near.length) continue;
-      if (a.target === 'none') {
-        if ([...zombies.inRange(pos.x, pos.z, a.radius ?? h.stats.range)].length >= 2) combat.use(h.id, id);
-      } else if (a.target === 'point') {
-        let best = null, score = 0;
-        for (const z of near) {
-          const s = [...zombies.inRange(z.x, z.z, radius)].length;
-          if (s > score) { score = s; best = z; }
-        }
-        if (best && score >= 2) combat.use(h.id, id, { x: best.x, z: best.z });
-      } else if (a.target === 'enemy') {
-        const t = near.filter((z) => R(z.x - pos.x, z.z - pos.z) <= h.stats.range).sort((p, q) => q.hp - p.hp)[0];
-        if (t) combat.use(h.id, id, { zombieId: t.id });
-      } else if (a.target === 'wall') {
-        const w = [...walls.all()].filter((x) => R(x.x + 0.5 - pos.x, x.y + 0.5 - pos.z) <= a.reach)
-          .sort((p, q) => p.hp / p.maxHp - q.hp / q.maxHp)[0];
-        if (w && w.hp < w.maxHp * 0.7) combat.use(h.id, id, { wallId: w.id });
-      }
-    }
-  }
-}
-
 function play(seed, name) {
   const st = STRATEGIES[name];
   const sim = new Simulation({ seed });
@@ -145,7 +112,6 @@ function play(seed, name) {
       prepare(sim, st, state);
       if (name !== 'none') sim.waves.startNext();
     }
-    if (st.abilities && (state.castTimer -= DT) <= 0) { state.castTimer = 0.5; castAbilities(sim); }
     sim.step(DT);
   }
   return { ...sim.summary(), bossesKilled, timedOut: !sim.over };

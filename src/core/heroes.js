@@ -99,6 +99,8 @@ export class HeroSystem {
       kills: 0,
       fallen: false,
       lowWarned: false,
+      /** Use abilities automatically (the player can still cast them by hand). */
+      autoCast: true,
     };
     this.applyStats(hero);
     hero.hp = hero.maxHp;
@@ -227,6 +229,11 @@ export class HeroSystem {
     h.lowWarned = false;
     this.events.emit('heroRevived', h);
     return true;
+  }
+
+  setAutoCast(heroId, on) {
+    const h = this.get(heroId);
+    if (h) h.autoCast = !!on;
   }
 
   setTargeting(heroId, mode) {

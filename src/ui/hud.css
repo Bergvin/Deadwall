@@ -249,3 +249,5 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 @media (max-height: 760px) {
   .panel, .panel.wide { max-height: calc(100vh - 230px); overflow-y: auto; }
 }
+.row.autocast { cursor: pointer; align-items: center; }
+.row.autocast input { accent-color: var(--gold); margin: 0; }

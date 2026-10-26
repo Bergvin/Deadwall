@@ -349,7 +349,13 @@ export class Hud {
     tgt.addEventListener('change', () => sim.heroes.setTargeting(hero.id, tgt.value));
     const tRow = h('div', 'row', '<span>Target</span>');
     tRow.append(tgt);
-    this.side.append(tRow);
+    const auto = h('label', 'row autocast', '<span>Use abilities automatically</span>');
+    const cb = h('input');
+    cb.type = 'checkbox';
+    cb.checked = hero.autoCast;
+    cb.addEventListener('change', () => sim.heroes.setAutoCast(hero.id, cb.checked));
+    auto.append(cb);
+    this.side.append(tRow, auto);
 
     // Talents
     this.side.append(h('div', 'section', 'Upgrades'));

@@ -6,14 +6,18 @@ import { heroStats } from '../src/core/heroStats.js';
 
 const DT = 1 / 60;
 
-/** A sim with lots of gold, one wall at (15, 14) and a hero of `type` on it. */
-function setup(type, { level = 1 } = {}) {
+/**
+ * A sim with lots of gold, one wall at (15, 14) and a hero of `type` on it. Auto-cast is
+ * off by default so tests can cast abilities by hand.
+ */
+function setup(type, { level = 1, auto = false } = {}) {
   const sim = new Simulation({ seed: 100 });
   sim.economy.earn(100000);
   const wall = sim.walls.build('stone', 15, 14);
   const hero = sim.heroes.recruit(type);
   sim.heroes.deploy(hero.id, wall.id);
   while (hero.level < level) sim.heroes.addXp(hero, sim.heroes.xpToNext(hero));
+  hero.autoCast = auto;
   return { sim, wall, hero };
 }
 
@@ -228,4 +232,33 @@ test('cooldowns follow simulation time only (pause-safe, speed-consistent)', () 
   };
   const a = run(60), b = run(30);
   assert.ok(Math.abs(a - b) < 0.05, `${a} vs ${b}`);
+});
+
+test('heroes use their abilities automatically, and the toggle turns that off', () => {
+  const play = (auto) => {
+    const { sim, hero } = setup('mage', { level: 4 });
+    sim.heroes.setAutoCast(hero.id, auto);
+    for (let i = 0; i < 6; i++) dummy(sim, 15 + (i % 3) * 0.4, 11 + Math.floor(i / 3) * 0.4, 5000);
+    const used = [];
+    sim.events.on('abilityUsed', ({ abilityId }) => used.push(abilityId));
+    sim.run(3);
+    return used;
+  };
+  const on = play(true);
+  assert.ok(on.includes('fireball') && on.includes('arcaneBlast'), `auto-cast used ${on}`);
+  assert.deepEqual(play(false), []);
+});
+
+test('auto-cast holds area abilities for a pack and buffs walls under attack', () => {
+  const { sim, hero } = setup('mage', { level: 4, auto: true });
+  dummy(sim, 15.5, 11, 5000); // a lone walker is not worth a fireball
+  const used = [];
+  sim.events.on('abilityUsed', ({ abilityId }) => used.push(abilityId));
+  sim.run(3);
+  assert.ok(!used.includes('fireball'));
+  const p = setup('paladin', { level: 2, auto: true });
+  p.sim.walls.damage(p.wall.id, 200);
+  p.sim.run(1);
+  assert.ok(p.wall.buffs.some((b) => b.kind === 'holy'), 'holy shield on the hurt wall');
+  assert.ok(hero.autoCast);
 });

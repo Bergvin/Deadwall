@@ -4,6 +4,8 @@
 // damage over time, slows, stuns and ground zones.
 
 const R = Math.hypot;
+/** Seconds between automatic ability checks. */
+const AUTO_CAST_INTERVAL = 0.5;
 
 export class CombatSystem {
   /** @param {{heroes, zombies, walls, projectiles, zones, events, rng, types, rules}} deps */
@@ -70,6 +72,11 @@ export class CombatSystem {
   // --- per step ------------------------------------------------------------
   step(dt) {
     this.time += dt;
+    this.autoTimer = (this.autoTimer ?? 0) - dt;
+    if (this.autoTimer <= 0) {
+      this.autoTimer = AUTO_CAST_INTERVAL;
+      for (const h of this.heroes.active()) if (h.autoCast) this.#autoCast(h);
+    }
     for (const h of this.heroes.all()) {
       for (const id of Object.keys(h.abilityCooldowns)) {
         h.abilityCooldowns[id] = Math.max(0, h.abilityCooldowns[id] - dt);
@@ -88,6 +95,57 @@ export class CombatSystem {
       if (h.cooldown > 0) continue;
       h.cooldown = h.stats.attackInterval;
       this.#basicAttack(h, target, pos);
+    }
+  }
+
+  /**
+   * Automatic ability use: every ready, unlocked ability is cast when it would be worth it.
+   * Area abilities wait for a pack (or a boss/elite), single-target abilities pick the
+   * toughest enemy in range, wall buffs go to walls that are under attack or badly hurt.
+   */
+  #autoCast(h) {
+    const pos = this.heroes.positionOf(h);
+    const zs = this.zombies;
+    const big = (z) => z.boss || z.elite;
+    for (const [id, a] of Object.entries(this.types[h.type].abilities ?? {})) {
+      if (h.level < a.unlock || (h.abilityCooldowns[id] ?? 0) > 0) continue;
+      const reach = this.abilityReach(h, id);
+      const near = [...zs.inRange(pos.x, pos.z, reach)];
+      if (!near.length && a.target !== 'wall') continue;
+      let target = null;
+      if (a.target === 'none') {
+        if (id === 'rally') {
+          // Rally when zombies are hammering walls close to the warrior.
+          const attackers = near.filter((z) => z.state === 'attackWall' && R(z.x - pos.x, z.z - pos.z) <= a.radius);
+          if (attackers.length < 2) continue;
+        } else {
+          const r = a.radius ?? h.stats.range;
+          const inside = [...zs.inRange(pos.x, pos.z, r)];
+          if (inside.length < 2 && !inside.some(big)) continue;
+        }
+      } else if (a.target === 'point') {
+        const radius = this.abilityRadius(h, id) || 1;
+        let best = null, score = 0;
+        for (const z of near) {
+          const s = [...zs.inRange(z.x, z.z, radius)].length + (big(z) ? 2 : 0);
+          if (s > score) { score = s; best = z; }
+        }
+        if (!best || score < 3) continue;
+        target = { x: best.x, z: best.z };
+      } else if (a.target === 'enemy') {
+        const pick = near.filter((z) => R(z.x - pos.x, z.z - pos.z) <= h.stats.range)
+          .sort((p, q) => (big(q) - big(p)) || q.hp - p.hp)[0];
+        if (!pick) continue;
+        target = { zombieId: pick.id };
+      } else if (a.target === 'wall') {
+        const w = [...this.walls.all()]
+          .filter((x) => R(x.x + 0.5 - pos.x, x.y + 0.5 - pos.z) <= a.reach)
+          .filter((x) => x.hp < x.maxHp * 0.6 || zs.list.some((z) => z.alive && z.targetWallId === x.id))
+          .sort((p, q) => p.hp / p.maxHp - q.hp / q.maxHp)[0];
+        if (!w || w.buffs.some((b) => b.until > this.time)) continue;
+        target = { wallId: w.id };
+      }
+      if (this.canUse(h.id, id, target).ok) this.use(h.id, id, target);
     }
   }
 
