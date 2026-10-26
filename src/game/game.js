@@ -2,11 +2,15 @@
 // persists between runs (renderer, camera, models, scenery, shared renderers) and creates
 // a fresh Session for every run.
 import * as THREE from 'three';
+import * as CFG from '../config/game.js';
 import { MAP, CAMERA, ZOMBIES, HEROES, CHAMPION } from '../config/game.js';
 import { MODELS } from '../config/assets.js';
 import { createMapGrid } from '../core/grid.js';
 import { GameLoop } from '../core/loop.js';
 import { loadSave, writeSave, recordRun } from '../core/save.js';
+import {
+  applyBonuses, totalBonuses, runXp, addXp, ensureOffer, choosePerk, addArtifact, equip, unequip, salvage,
+} from '../core/commander.js';
 import { createStage } from '../render/setup.js';
 import { CameraController } from '../render/cameraController.js';
 import { AssetLibrary } from '../render/assets.js';
@@ -62,6 +66,7 @@ export class Game {
     this.screens = new Screens(document.body, {
       onNewGame: () => this.chooseChampion(),
       onMenu: () => this.toMenu(),
+      onCommander: () => this.openCommander(),
       onResume: () => this.togglePause(),
       getSettings: () => this.save.settings,
       setSetting: (key, value) => this.setSetting(key, value),
@@ -99,6 +104,7 @@ export class Game {
     this.#endSession();
     this.screens.hideMenu();
     this.screens.hideGameOver();
+    this.screens.hideCommander();
     this.loop.paused = false;
     this.loop.speed = 1;
     this.screens.setPaused(false);
@@ -107,6 +113,9 @@ export class Game {
       overlay: this.overlay, zombieView: this.zombieView, projectileView: this.projectileView,
       effects: this.effects, fx: this.fx, bars: this.bars, sfx: this.sfx, breaches: this.breaches, floaters: this.floaters, gateNode: this.gateNode,
       loop: this.loop, seed, heroType, togglePause: () => this.togglePause(),
+      // Every run plays with the Commander's perks and equipped artifacts.
+      config: applyBonuses(CFG, totalBonuses(this.save.commander)),
+      onArtifact: (drop) => this.collectArtifact(drop),
       settings: this.save.settings, setSetting: (k, v) => this.setSetting(k, v),
       onGameOver: (summary) => this.gameOver(summary),
     });
@@ -119,7 +128,43 @@ export class Game {
     this.loop.paused = false;
     this.screens.setPaused(false);
     this.screens.hideGameOver();
+    this.screens.hideCommander();
     this.screens.showMenu(this.save);
+  }
+
+  /** Stores an artifact the moment it drops, so quitting a run never loses it. */
+  collectArtifact(drop) {
+    const res = addArtifact(this.save.commander, drop);
+    writeSave(this.save);
+    return res;
+  }
+
+  /** Commander screen (from the menu or the game over screen). */
+  openCommander(ui = {}) {
+    const cmd = this.save.commander;
+    ensureOffer(cmd);
+    writeSave(this.save);
+    const from = this.state;
+    const redraw = (next = {}) => this.openCommander(next);
+    const act = (fn) => (arg) => { fn(cmd, arg); writeSave(this.save); redraw(); };
+    this.screens.showCommander(cmd, {
+      choose: act(choosePerk),
+      equip: act(equip),
+      unequip: act(unequip),
+      // Salvaging destroys an artifact, so it takes two clicks.
+      salvage: (uid) => {
+        if (ui.armedSalvage !== uid) { redraw({ armedSalvage: uid }); return; }
+        salvage(cmd, uid);
+        writeSave(this.save);
+        redraw();
+      },
+      back: () => {
+        this.screens.hideCommander();
+        if (from === STATE.OVER && this.lastRun) this.screens.showGameOver(...this.lastRun);
+        else this.toMenu();
+      },
+      backLabel: from === STATE.OVER ? 'Back' : 'Main Menu',
+    }, ui);
   }
 
   gameOver(summary) {
@@ -127,10 +172,13 @@ export class Game {
     this.state = STATE.OVER;
     const rec = recordRun(this.save, summary);
     this.save = rec.save;
+    const xp = runXp(summary);
+    const levels = addXp(this.save.commander, xp);
     writeSave(this.save);
+    this.lastRun = [summary, this.save, rec, { xp, levels }];
     // Let the final moments play out behind the screen, then freeze.
     setTimeout(() => {
-      if (this.state === STATE.OVER) this.screens.showGameOver(summary, this.save, rec);
+      if (this.state === STATE.OVER) this.screens.showGameOver(...this.lastRun);
     }, 1200);
   }
 

@@ -297,3 +297,62 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 .champion .cabil, .champion .cnote { grid-column: span 2; font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
 .champion .cnote b { color: var(--text); font-weight: 600; }
 @media (max-width: 900px) { .champions { grid-template-columns: repeat(2, 1fr); } }
+
+/* --- commander, wanderers, artifacts --- */
+.bossbar.wanderer .bname { color: #c8dcff; text-shadow: 0 0 10px rgba(80, 130, 255, 0.8); }
+.bossbar.wanderer .bar { border-color: #2a3a6a; background: rgba(6, 10, 22, 0.85); }
+.bossbar.wanderer .bar > div { background: linear-gradient(90deg, #2a4aa0, #8ab4ff); }
+
+.cmdwrap { margin: 16px auto 4px; width: 260px; }
+.cmdsum { text-align: left; }
+.cmdsum .cmdline { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.cmdsum .cmdline b { color: var(--gold); font-family: var(--font); }
+.xpbar { height: 7px; margin-top: 4px; border: 1px solid var(--border); background: rgba(0, 0, 0, 0.5); border-radius: 3px; overflow: hidden; }
+.xpbar > div { height: 100%; background: linear-gradient(90deg, #8a6a3a, var(--gold)); }
+.cmdsum .xptext { font-size: 11px; color: var(--muted); text-align: right; margin-top: 2px; }
+.cmdsum .picks { color: var(--gold); font-weight: 700; font-size: 13px; margin-top: 2px; text-align: center; }
+.screen .btn.glow { border-color: var(--gold); box-shadow: 0 0 12px rgba(232, 182, 76, 0.55); animation: glowpulse 1.6s ease-in-out infinite; }
+@keyframes glowpulse { 50% { box-shadow: 0 0 22px rgba(232, 182, 76, 0.85); } }
+
+.screen .runloot { margin: 10px 0 0; font-size: 13px; }
+.screen .runloot .xpgain { color: var(--gold); }
+.screen .runloot .found { margin-top: 4px; }
+.dim { color: var(--muted); font-weight: 400; }
+.small { font-size: 12px; }
+
+.cmdscreen { overflow-y: auto; align-items: flex-start; padding: 24px 0; }
+.cmdbox { width: min(760px, 94vw); box-sizing: border-box; margin: auto; }
+.cmdbox .cmdsum { width: 320px; margin: 0 auto; }
+.cmdsec { margin-top: 20px; text-align: left; }
+.cmdsec h3 { font-family: var(--font); font-size: 16px; margin: 0 0 8px; color: #e0d0b0; }
+.rarity { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; }
+.offer { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.offercard {
+  --rc: #888; cursor: pointer; text-align: center; padding: 14px 10px; border-radius: 6px; color: var(--text);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rc) 18%, transparent), rgba(20, 18, 16, 0.95));
+  border: 1px solid var(--rc); box-shadow: 0 0 10px color-mix(in srgb, var(--rc) 35%, transparent); font: inherit;
+  transition: transform 0.12s;
+}
+.offercard:hover { transform: translateY(-3px); box-shadow: 0 0 20px color-mix(in srgb, var(--rc) 65%, transparent); }
+.offercard .pname { font-family: var(--font); font-size: 17px; margin: 6px 0 4px; }
+.offercard .pdesc { font-size: 13px; color: #d8ccb4; }
+.offercard.r-mythical { animation: mythic 2s ease-in-out infinite; }
+@keyframes mythic { 50% { box-shadow: 0 0 26px var(--rc); } }
+
+.slots, .stash { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+.artifact {
+  --rc: #666; position: relative; cursor: pointer; padding: 8px; border-radius: 5px; text-align: center; font-size: 12px;
+  background: rgba(24, 22, 20, 0.95); border: 1px solid color-mix(in srgb, var(--rc) 70%, transparent);
+}
+.artifact:hover { border-color: var(--rc); box-shadow: 0 0 10px color-mix(in srgb, var(--rc) 45%, transparent); }
+.artifact.equipped { background: linear-gradient(180deg, color-mix(in srgb, var(--rc) 16%, transparent), rgba(24, 22, 20, 0.95)); }
+.artifact.empty { cursor: default; color: var(--muted); border-style: dashed; border-color: var(--border); display: flex; align-items: center; justify-content: center; min-height: 92px; }
+.artifact .aicon { font-size: 22px; color: var(--rc); line-height: 1.1; }
+.artifact .aname { font-weight: 600; margin: 3px 0 1px; }
+.artifact .abon { color: #cfc4ad; font-size: 11px; margin-top: 4px; line-height: 1.4; }
+.artifact .salvage { position: absolute; top: 3px; right: 3px; font-size: 10px; padding: 1px 5px; border-radius: 3px; cursor: pointer; color: var(--muted); background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border); }
+.artifact .salvage:hover { color: var(--red); border-color: var(--red); }
+.totals { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
+.totals span { color: var(--green); }
+.perklist { margin-top: 8px; font-size: 12px; line-height: 1.6; }
+@media (max-width: 560px) { .offer { grid-template-columns: 1fr; } }

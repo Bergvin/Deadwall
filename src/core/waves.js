@@ -50,7 +50,7 @@ export class WaveSystem {
   }
 
   get remaining() {
-    return this.queue.length + this.zombies.aliveCount;
+    return this.queue.length + this.zombies.hordeAlive;
   }
 
   /** Starts the next wave now. Only valid during preparation, so it can never double up. */
@@ -100,7 +100,7 @@ export class WaveSystem {
       }
       return;
     }
-    if (this.zombies.aliveCount === 0) {
+    if (this.zombies.hordeAlive === 0) {
       const bonus = this.cfg.clearBonusBase + this.cfg.clearBonusPerWave * this.wave;
       this.economy.earn(bonus, `wave:${this.wave}`);
       this.cleared = this.wave;

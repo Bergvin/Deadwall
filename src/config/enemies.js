@@ -83,6 +83,58 @@ export const ZOMBIES = {
     /** Routes toward the weakest wall: wall path cost scales with remaining health. */
     charge: { wallBaseCost: 2, wallCostPerHp: 0.002, speedMult: 1.6 },
   },
+
+  // Wanderers: rare, very tough creatures that cross the field from west to east between
+  // waves. They pass through walls, never attack and are gone once they reach the east edge.
+  // Slaying one drops an artifact from its loot table (config/commander.js LOOT_TABLES).
+  wraith: {
+    name: 'Wandering Horror',
+    description: 'It ignores your walls. Slay it before it leaves the field for an artifact.',
+    hp: 1300, armor: 0.2, resist: 0.2,
+    speed: 0.7,
+    wallDamage: 0, attackInterval: 99,
+    reward: 40, xp: 150,
+    model: 'gravelord', scale: 0.75, tint: [0.65, 0.85, 1.5],
+    wanderer: { loot: 'minor', wobble: 1.2, regenPerSec: 0 },
+  },
+  colossus: {
+    name: 'Dread Colossus',
+    description: 'A heavily armored giant that heals as it walks. Rich spoils if you can fell it.',
+    hp: 3800, armor: 0.45, resist: 0.25,
+    speed: 0.5,
+    wallDamage: 0, attackInterval: 99,
+    reward: 100, xp: 400,
+    model: 'behemoth', scale: 1.1, tint: [0.55, 0.6, 0.75],
+    wanderer: { loot: 'major', wobble: 0.8, regenPerSec: 0.01 },
+  },
+  eclipse: {
+    name: 'Eclipse Titan',
+    description: 'Ancient, swift and nearly immune to magic. Legends speak of its treasure.',
+    hp: 8500, armor: 0.35, resist: 0.55,
+    speed: 0.62,
+    wallDamage: 0, attackInterval: 99,
+    reward: 250, xp: 900,
+    model: 'gravelord', scale: 1.25, tint: [0.45, 0.3, 0.7],
+    wanderer: { loot: 'mythic', wobble: 1.6, regenPerSec: 0.012 },
+  },
+};
+
+/**
+ * Wanderer sightings: after each cleared wave (from `fromWave`), one Wanderer may appear with
+ * probability `chance`. Each type has its own first wave and weight. Wanderers walk along a
+ * random row between minRow and maxRow and get the current wave's HP multiplier.
+ */
+export const WANDERERS = {
+  fromWave: 3,
+  chance: 0.3,
+  maxChance: 0.9,
+  minRow: 5,
+  maxRow: 15,
+  types: [
+    { type: 'wraith', fromWave: 3, weight: 6 },
+    { type: 'colossus', fromWave: 10, weight: 3 },
+    { type: 'eclipse', fromWave: 20, weight: 1.5 },
+  ],
 };
 
 /** Elite variants: stronger, glowing, worth more. */

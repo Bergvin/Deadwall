@@ -1,4 +1,6 @@
-// Full-screen overlays: main menu, game over, pause badge.
+// Full-screen overlays: main menu, game over, commander, pause badge.
+import { commanderSummary, renderCommander } from './commanderScreen.js';
+import { RARITY_INFO, ARTIFACTS } from '../config/commander.js';
 const h = (tag, cls, html) => {
   const el = document.createElement(tag);
   if (cls) el.className = cls;
@@ -10,7 +12,7 @@ const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padSt
 export class Screens {
   /**
    * @param {HTMLElement} root
-   * @param {{onNewGame: () => void, onMenu: () => void, onResume: () => void,
+   * @param {{onNewGame: () => void, onMenu: () => void, onResume: () => void, onCommander: () => void,
    *          getSettings: () => object, setSetting: (key: string, value: any) => void}} handlers
    */
   constructor(root, handlers) {
@@ -18,8 +20,9 @@ export class Screens {
     this.menu = h('div', 'screen');
     this.over = h('div', 'screen');
     this.pause = h('div', 'pausepanel');
-    this.menu.hidden = this.over.hidden = this.pause.hidden = true;
-    root.append(this.menu, this.over, this.pause);
+    this.cmd = h('div', 'screen cmdscreen');
+    this.menu.hidden = this.over.hidden = this.pause.hidden = this.cmd.hidden = true;
+    root.append(this.menu, this.over, this.cmd, this.pause);
   }
 
   /** Volume, mute, shadows and path-preview controls bound to the persistent settings. */
@@ -53,6 +56,7 @@ export class Screens {
     const start = h('button', 'btn big primary', 'New Game');
     start.addEventListener('click', () => this.handlers.onNewGame());
     box.append(start);
+    box.append(this.#commanderButton(save.commander));
     box.append(h('div', 'records',
       `<span>Best wave</span><b>${save.bestWave || '—'}</b>`
       + `<span>High score</span><b>${save.highScore || '—'}</b>`
@@ -78,6 +82,7 @@ export class Screens {
    */
   showHeroSelect(heroes, champion, onPick) {
     this.over.hidden = true;
+    this.cmd.hidden = true;
     this.menu.hidden = false;
     this.menu.innerHTML = '';
     const box = h('div', 'box wide',
@@ -99,8 +104,35 @@ export class Screens {
     this.menu.append(box);
   }
 
-  /** @param {object} summary Simulation.summary() @param {{newBestWave:boolean, newHighScore:boolean}} rec */
-  showGameOver(summary, save, rec) {
+  /** Commander summary plus a button that opens the commander screen. */
+  #commanderButton(cmd) {
+    const wrap = h('div', 'cmdwrap');
+    wrap.append(commanderSummary(cmd));
+    const b = h('button', `btn big${cmd.pendingPicks ? ' glow' : ''}`, cmd.pendingPicks ? 'Choose upgrades' : 'Commander');
+    b.addEventListener('click', () => this.handlers.onCommander());
+    wrap.append(b);
+    return wrap;
+  }
+
+  /** @param {object} cmd commander record @param {object} on see renderCommander */
+  showCommander(cmd, on, ui = {}) {
+    this.menu.hidden = true;
+    this.over.hidden = true;
+    this.cmd.hidden = false;
+    renderCommander(this.cmd, cmd, on, ui);
+  }
+
+  hideCommander() {
+    this.cmd.hidden = true;
+  }
+
+  /**
+   * @param {object} summary Simulation.summary()
+   * @param {{newBestWave:boolean, newHighScore:boolean}} rec
+   * @param {{xp:number, levels:number}} [progress] commander XP from this run
+   */
+  showGameOver(summary, save, rec, progress = { xp: 0, levels: 0 }) {
+    this.cmd.hidden = true;
     this.over.hidden = false;
     this.over.innerHTML = '';
     const box = h('div', 'box', '<h2>The Gate Has Fallen</h2><div class="tagline">The dead pour into the fortress.</div>');
@@ -118,6 +150,15 @@ export class Screens {
       + `<span>Time survived</span><b>${fmtTime(summary.time)}</b>`
       + `<span>Best wave</span><b>${save.bestWave}</b>`
       + `<span>High score</span><b>${save.highScore}</b>`));
+    const found = summary.artifacts ?? [];
+    const loot = h('div', 'runloot',
+      `<div class="xpgain">+${progress.xp} commander XP${progress.levels ? ` · <b>Level up${progress.levels > 1 ? ` ×${progress.levels}` : ''}!</b>` : ''}</div>`
+      + (found.length
+        ? `<div class="found">Artifacts found: ${found.map((a) => `<span style="color:${RARITY_INFO[a.rarity].color}">${ARTIFACTS[a.id].name}</span>`).join(', ')}</div>`
+        : '')
+      + (summary.wanderersSlain || summary.wanderersEscaped
+        ? `<div class="dim small">Wanderers slain ${summary.wanderersSlain ?? 0} · escaped ${summary.wanderersEscaped ?? 0}</div>` : ''));
+    box.append(loot, this.#commanderButton(save.commander));
     const again = h('button', 'btn big primary', 'Play Again');
     again.addEventListener('click', () => this.handlers.onNewGame());
     const menu = h('button', 'btn big', 'Main Menu');

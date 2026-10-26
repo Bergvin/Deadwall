@@ -5,6 +5,8 @@
 //             through a closed line at its cheapest point;
 //   siege   - walls are cheap, so siege zombies bulldoze the direct line to the gate;
 //   charge  - wall cost follows remaining health, so the Gravelord heads for weak walls.
+// Wanderers ignore all of that: they walk west to east along their own row, through walls,
+// never attack, and leave the field (without reward) when they reach the east edge.
 // Fields are recomputed when walls are added or removed (and periodically for 'charge').
 // Each step a zombie looks at the next cell on its field: an open cell -> walk to it; a
 // wall -> stop and hit that wall; the gate -> stop and hit the gate.
@@ -59,6 +61,18 @@ export class ZombieSystem {
     return n;
   }
 
+  /** Living enemies that belong to the wave (Wanderers excluded): a wave ends at zero. */
+  get hordeAlive() {
+    let n = 0;
+    for (const z of this.list) if (z.alive && !z.wanderer) n++;
+    return n;
+  }
+
+  /** Living Wanderers (for the HUD). */
+  get wanderers() {
+    return this.list.filter((z) => z.alive && z.wanderer);
+  }
+
   /** Living bosses (for the HUD boss bar). */
   get bosses() {
     return this.list.filter((z) => z.alive && z.boss);
@@ -97,9 +111,9 @@ export class ZombieSystem {
    * @param {number} x world x
    * @param {number} z world z
    * @param {number} hpMultiplier wave scaling
-   * @param {{elite?: boolean}} [opts]
+   * @param {{elite?: boolean, rng?: object}} [opts] rng: random stream for per-zombie rolls
    */
-  spawn(typeKey, x, z, hpMultiplier = 1, { elite = false } = {}) {
+  spawn(typeKey, x, z, hpMultiplier = 1, { elite = false, rng = this.rng } = {}) {
     const t = this.types[typeKey];
     const e = elite && this.elite ? this.elite : null;
     const hp = Math.round(t.hp * hpMultiplier * (e ? e.hpMult : 1));
@@ -113,14 +127,20 @@ export class ZombieSystem {
       hp, maxHp: hp,
       armor: t.armor,
       resist: t.resist ?? 0,
-      speed: t.speed * this.rng.range(0.9, 1.1),
+      speed: t.speed * rng.range(0.9, 1.1),
       wallDamage: dmg,
       attackInterval: t.attackInterval,
-      attackTimer: this.rng.range(0, t.attackInterval),
+      attackTimer: rng.range(0, t.attackInterval),
       reward: Math.round(t.reward * (e ? e.rewardMult : 1)),
       xp: t.xp * (e ? e.xpMult : 1),
       scale: (t.scale ?? 1) * (e ? e.scaleMult : 1),
-      profile: t.siege ? 'siege' : t.charge ? 'charge' : 'default',
+      profile: t.siege ? 'siege' : t.charge ? 'charge' : t.wanderer ? 'wanderer' : 'default',
+      wanderer: !!t.wanderer,
+      /** Wanderers: the row they follow, where they entered and their drift direction. */
+      row: z,
+      startX: x,
+      wobbleSign: t.wanderer && rng.next() < 0.5 ? -1 : 1,
+      escaped: false,
       alive: true,
       state: ZSTATE.MOVE,
       targetWallId: 0,
@@ -130,10 +150,10 @@ export class ZombieSystem {
       /** Damage-over-time effects: {dps, until, ownerId, type, timer}. */
       dots: [],
       // Per-zombie offset from cell centres, so groups spread out (bosses walk centred).
-      ox: t.boss ? 0 : this.rng.range(-SPREAD, SPREAD),
-      oz: t.boss ? 0 : this.rng.range(-SPREAD, SPREAD),
+      ox: t.boss || t.wanderer ? 0 : rng.range(-SPREAD, SPREAD),
+      oz: t.boss || t.wanderer ? 0 : rng.range(-SPREAD, SPREAD),
       facing: 0,
-      animTime: this.rng.range(0, 2),
+      animTime: rng.range(0, 2),
       deadTime: 0,
       abilityTimer: t.summon?.interval ?? t.empower?.interval ?? 0,
       /** heroId -> damage dealt, for sharing XP on death. */
@@ -237,7 +257,10 @@ export class ZombieSystem {
       }
       if (z.dots.length) this.#stepDots(z, dt);
       if (!z.alive) { this.list[write++] = z; continue; }
-      if (this.time >= z.stunUntil) {
+      if (z.wanderer) {
+        this.#stepWanderer(z, dt);
+        if (z.escaped) continue; // gone from the field: dropped from the list right away
+      } else if (this.time >= z.stunUntil) {
         if (z.boss) this.#bossAbilities(z, dt);
         this.#stepZombie(z, dt);
       }
@@ -247,6 +270,27 @@ export class ZombieSystem {
     }
     for (let i = n; i < this.list.length; i++) this.list[write++] = this.list[i];
     this.list.length = write;
+  }
+
+  /** West-to-east crossing with a gentle drift; regenerates; escapes at the east edge. */
+  #stepWanderer(z, dt) {
+    const w = this.types[z.type].wanderer;
+    if (w.regenPerSec && z.hp < z.maxHp) z.hp = Math.min(z.maxHp, z.hp + z.maxHp * w.regenPerSec * dt);
+    z.state = ZSTATE.MOVE;
+    if (this.time < z.stunUntil) return;
+    let speed = z.speed;
+    if (this.time < z.slowUntil) speed *= z.slowFactor;
+    const x0 = z.x, z0 = z.z;
+    z.x += speed * dt;
+    const drift = Math.sin((z.x - z.startX) * 0.35) * w.wobble * 0.5 * z.wobbleSign;
+    z.z = Math.min(this.grid.height - 3.5, Math.max(3, z.row + drift));
+    z.facing = Math.atan2(z.x - x0, z.z - z0);
+    if (z.x >= this.grid.width - 0.05) {
+      z.alive = false; // leaves without reward; set first so nothing else can act on it
+      z.escaped = true;
+      z.dots.length = 0;
+      this.events.emit('wandererEscaped', { zombie: z });
+    }
   }
 
   #bossAbilities(z, dt) {

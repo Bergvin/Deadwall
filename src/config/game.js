@@ -45,7 +45,13 @@ export const FORTRESS = {
 };
 
 // Zombie, boss, elite and wave-composition config lives in enemies.js.
-export { ZOMBIES, ELITE, WAVE_TABLE } from './enemies.js';
+export { ZOMBIES, ELITE, WAVE_TABLE, WANDERERS } from './enemies.js';
+
+// Commander perks, artifacts and loot tables live in commander.js.
+export { LOOT_TABLES } from './commander.js';
+
+/** Run-wide bonuses from the Commander that the simulation reads (core/commander.js fills them). */
+export const BONUS = { killGoldPct: 0, artifactLuckPct: 0 };
 
 // Hero classes, rules and targeting modes live in heroes.js.
 export { HEROES, HERO_RULES, TARGETING } from './heroes.js';

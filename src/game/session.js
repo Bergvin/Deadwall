@@ -13,6 +13,7 @@ import { healthColor } from '../render/healthBars.js';
 import { FX_COLORS } from '../render/fx.js';
 import { Interaction } from '../input/interaction.js';
 import { Hud } from '../ui/hud.js';
+import { RARITY_INFO } from '../config/commander.js';
 
 export class Session {
   /**
@@ -23,7 +24,7 @@ export class Session {
     this.shared = shared;
     const { scene, canvas, cam, assets, overlay } = shared;
     this.abort = new AbortController();
-    this.sim = new Simulation({ seed: shared.seed });
+    this.sim = new Simulation({ seed: shared.seed, ...(shared.config ? { config: shared.config } : {}) });
     const sim = this.sim;
     this.wallView = new WallView(scene, assets, sim.walls, sim.events);
     this.heroView = new HeroView(scene, assets, sim.heroes, sim.events, sim.config.HEROES);
@@ -118,6 +119,14 @@ export class Session {
       effects.burst({ x: zombie.x, y: 1.2, z: zombie.z }, { count: 20, color, size: 0.08, speed: 1.8, up: 2.2, life: 0.9, spread: 0.6 });
     });
     ev.on('bossSpawned', (z) => fx.ring(z.x, z.z, 2.5, 0xd0453a, 1.2));
+    ev.on('wandererSpawned', (z) => fx.ring(z.x, z.z, 2, 0x8ab4ff, 1.2));
+    ev.on('artifactDropped', (drop) => {
+      const color = parseInt(RARITY_INFO[drop.rarity].color.slice(1), 16);
+      fx.ring(drop.x, drop.z, 1.6, color, 1.2, 1.25);
+      effects.burst({ x: drop.x, y: 1, z: drop.z }, { count: 40, color, size: 0.09, speed: 1.6, up: 3.5, life: 1.4, spread: 0.5 });
+      const res = this.shared.onArtifact?.(drop);
+      this.hud.artifactFound(drop, res?.salvagedXp ?? 0);
+    });
     ev.on('thornsHit', ({ zombie }) => {
       effects.burst({ x: zombie.x, y: 0.6, z: zombie.z }, { count: 2, color: 0x8a1a14, size: 0.05, speed: 0.8, up: 1, life: 0.35, spread: 0.15 });
     });
@@ -204,6 +213,8 @@ export class Session {
     ev.on('waveStarted', ({ boss }) => sfx.play(boss ? 'boss' : 'waveStart'));
     ev.on('waveCleared', () => sfx.play('waveCleared'));
     ev.on('bossSpawned', () => sfx.play('boss'));
+    ev.on('wandererSpawned', () => sfx.play('boss', 0.7));
+    ev.on('artifactDropped', () => sfx.play('levelUp', 1.2));
     ev.on('bossAbility', () => sfx.play('boss', 0.6));
     for (const t of ['heroEndangered', 'heroFell']) ev.on(t, () => sfx.play('alarm'));
     ev.on('gateDamaged', () => { if (this.sim.fortress.endangered) sfx.play('alarm'); });

@@ -1,7 +1,11 @@
 // Persistent records in localStorage. Every read is validated; a missing, corrupted or
 // outdated save falls back to defaults and can never stop the game from starting.
+// Version 1 saves (before the Commander) are upgraded: their records and settings are kept.
+import { commanderDefaults, slotCount } from './commander.js';
+import { PERKS, ARTIFACTS, RARITIES, COMMANDER } from '../config/commander.js';
+
 const KEY = 'deadwall.save';
-const VERSION = 1;
+const VERSION = 2;
 
 const DEFAULTS = () => ({
   version: VERSION,
@@ -10,16 +14,48 @@ const DEFAULTS = () => ({
   totalKills: 0,
   runs: 0,
   settings: { muted: false, volume: 0.7, shadows: true, showPath: true },
+  commander: commanderDefaults(),
 });
 
 const bool = (v, fallback) => (typeof v === 'boolean' ? v : fallback);
 
 const nonNegInt = (v) => (Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+const isRarity = (r) => RARITIES.includes(r);
+const validPerk = (p) => p && PERKS[p.id] && isRarity(p.rarity) && PERKS[p.id].values[RARITIES.indexOf(p.rarity)] != null;
+
+/** Clean commander record: unknown perks/artifacts are dropped, equipment fits the slots. */
+export function sanitizeCommander(raw) {
+  const d = commanderDefaults();
+  if (!raw || typeof raw !== 'object') return d;
+  const level = Math.max(1, nonNegInt(raw.level));
+  const perks = Array.isArray(raw.perks) ? raw.perks.filter(validPerk).map((p) => ({ id: p.id, rarity: p.rarity })) : [];
+  const seen = new Set();
+  const artifacts = (Array.isArray(raw.artifacts) ? raw.artifacts : [])
+    .filter((a) => a && ARTIFACTS[a.id] && isRarity(a.rarity) && Number.isInteger(a.uid) && a.uid > 0 && !seen.has(a.uid) && seen.add(a.uid))
+    .slice(0, COMMANDER.maxStash)
+    .map((a) => ({ uid: a.uid, id: a.id, rarity: a.rarity }));
+  const uids = new Set(artifacts.map((a) => a.uid));
+  const equipped = [...new Set(Array.isArray(raw.equipped) ? raw.equipped : [])]
+    .filter((u) => uids.has(u)).slice(0, slotCount(level));
+  const pendingPicks = nonNegInt(raw.pendingPicks);
+  const offer = pendingPicks && Array.isArray(raw.offer) && raw.offer.length && raw.offer.every(validPerk)
+    ? raw.offer.map((p) => ({ id: p.id, rarity: p.rarity })) : null;
+  return {
+    level,
+    xp: Math.min(nonNegInt(raw.xp), COMMANDER.xpToNext(level) - 1),
+    pendingPicks,
+    offer,
+    perks,
+    artifacts,
+    equipped,
+    nextUid: Math.max(nonNegInt(raw.nextUid), ...artifacts.map((a) => a.uid + 1), 1),
+  };
+}
 
 /** Returns a clean save object built only from valid fields of `raw`. */
 export function sanitize(raw) {
   const d = DEFAULTS();
-  if (!raw || typeof raw !== 'object' || raw.version !== VERSION) return d;
+  if (!raw || typeof raw !== 'object' || (raw.version !== VERSION && raw.version !== 1)) return d;
   return {
     version: VERSION,
     bestWave: nonNegInt(raw.bestWave),
@@ -32,6 +68,7 @@ export function sanitize(raw) {
       shadows: bool(raw.settings?.shadows, d.settings.shadows),
       showPath: bool(raw.settings?.showPath, d.settings.showPath),
     },
+    commander: sanitizeCommander(raw.commander),
   };
 }
 
