@@ -251,11 +251,13 @@ test('heroes use their abilities automatically, and the toggle turns that off', 
 
 test('auto-cast holds area abilities for a pack and buffs walls under attack', () => {
   const { sim, hero } = setup('mage', { level: 4, auto: true });
-  dummy(sim, 15.5, 11, 5000); // a lone walker is not worth a fireball
+  dummy(sim, 15.5, 11, 5000); // a lone walker: hold the fireball for a pack at first ...
   const used = [];
   sim.events.on('abilityUsed', ({ abilityId }) => used.push(abilityId));
-  sim.run(3);
-  assert.ok(!used.includes('fireball'));
+  sim.run(2);
+  assert.ok(!used.includes('fireball'), 'waits for a pack');
+  sim.run(2);
+  assert.ok(used.includes('fireball'), '... but never hoards a ready ability');
   const p = setup('paladin', { level: 2, auto: true });
   p.sim.walls.damage(p.wall.id, 200);
   p.sim.run(1);

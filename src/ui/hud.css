@@ -251,3 +251,4 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 }
 .row.autocast { cursor: pointer; align-items: center; }
 .row.autocast input { accent-color: var(--gold); margin: 0; }
+.floater.ability { color: #b8d8ff; font-size: 13px; font-family: var(--font); letter-spacing: 1px; }

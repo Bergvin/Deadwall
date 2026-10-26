@@ -84,9 +84,12 @@ export class Session {
         life: big ? 0.9 : 0.5, spread: Math.min(1, radius),
       });
     });
-    ev.on('abilityUsed', ({ hero }) => {
+    ev.on('abilityUsed', ({ hero, abilityId }) => {
       const p = this.sim.heroes.positionOf(hero);
       if (p) fx.ring(p.x, p.z, 0.8, CLASS_COLOR[hero.type] ?? 0xffffff, 0.4, 1.25);
+      // Name the ability above the hero so automatic casts are easy to notice.
+      const name = this.sim.config.HEROES[hero.type].abilities[abilityId]?.name;
+      if (p && name) floaters.spawn({ x: p.x, y: 2.6, z: p.z }, name, 'ability');
     });
     ev.on('meleeHit', ({ target, holy, crit }) => {
       effects.burst({ x: target.x, y: 0.7, z: target.z }, {

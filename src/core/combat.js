@@ -6,6 +6,8 @@
 const R = Math.hypot;
 /** Seconds between automatic ability checks. */
 const AUTO_CAST_INTERVAL = 0.5;
+/** After this many seconds ready with enemies in reach, an ability is cast on the best target even without a pack. */
+const AUTO_CAST_PATIENCE = 3;
 
 export class CombatSystem {
   /** @param {{heroes, zombies, walls, projectiles, zones, events, rng, types, rules}} deps */
@@ -107,21 +109,26 @@ export class CombatSystem {
     const pos = this.heroes.positionOf(h);
     const zs = this.zombies;
     const big = (z) => z.boss || z.elite;
+    h.autoWait ??= {};
     for (const [id, a] of Object.entries(this.types[h.type].abilities ?? {})) {
       if (h.level < a.unlock || (h.abilityCooldowns[id] ?? 0) > 0) continue;
       const reach = this.abilityReach(h, id);
       const near = [...zs.inRange(pos.x, pos.z, reach)];
-      if (!near.length && a.target !== 'wall') continue;
+      if (!near.length && a.target !== 'wall') { h.autoWait[id] = 0; continue; }
+      // Wait a little for a better (denser) target, but never hoard a ready ability.
+      h.autoWait[id] = (h.autoWait[id] ?? 0) + AUTO_CAST_INTERVAL;
+      const impatient = h.autoWait[id] >= AUTO_CAST_PATIENCE;
+      const minPack = impatient ? 1 : 2;
       let target = null;
       if (a.target === 'none') {
         if (id === 'rally') {
           // Rally when zombies are hammering walls close to the warrior.
           const attackers = near.filter((z) => z.state === 'attackWall' && R(z.x - pos.x, z.z - pos.z) <= a.radius);
-          if (attackers.length < 2) continue;
+          if (attackers.length < minPack) continue;
         } else {
           const r = a.radius ?? h.stats.range;
           const inside = [...zs.inRange(pos.x, pos.z, r)];
-          if (inside.length < 2 && !inside.some(big)) continue;
+          if (inside.length < minPack && !inside.some(big)) continue;
         }
       } else if (a.target === 'point') {
         const radius = this.abilityRadius(h, id) || 1;
@@ -130,7 +137,8 @@ export class CombatSystem {
           const s = [...zs.inRange(z.x, z.z, radius)].length + (big(z) ? 2 : 0);
           if (s > score) { score = s; best = z; }
         }
-        if (!best || score < 3) continue;
+        // A pack of three normally; when impatient, any single enemy will do.
+        if (!best || score < (impatient ? 1 : 3)) continue;
         target = { x: best.x, z: best.z };
       } else if (a.target === 'enemy') {
         const pick = near.filter((z) => R(z.x - pos.x, z.z - pos.z) <= h.stats.range)
@@ -145,7 +153,7 @@ export class CombatSystem {
         if (!w || w.buffs.some((b) => b.until > this.time)) continue;
         target = { wallId: w.id };
       }
-      if (this.canUse(h.id, id, target).ok) this.use(h.id, id, target);
+      if (this.canUse(h.id, id, target).ok && this.use(h.id, id, target).ok) h.autoWait[id] = 0;
     }
   }
 
