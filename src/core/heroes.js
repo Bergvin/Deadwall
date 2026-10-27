@@ -293,6 +293,15 @@ export class HeroSystem {
   }
 
   // --- experience and upgrades -------------------------------------------
+  /** Wave-clear XP: a fixed share of a level for every hero still standing. */
+  awardWaveXp() {
+    const f = this.rules.waveClearLevelFraction ?? 0;
+    if (!f) return;
+    for (const h of this.#heroes.values()) {
+      if (!h.fallen && h.level < this.rules.maxLevel) this.addXp(h, this.xpToNext(h) * f);
+    }
+  }
+
   xpToNext(h) {
     return h.level >= this.rules.maxLevel ? Infinity : this.rules.xpToNext(h.level);
   }

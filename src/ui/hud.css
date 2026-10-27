@@ -356,3 +356,8 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 .totals span { color: var(--green); }
 .perklist { margin-top: 8px; font-size: 12px; line-height: 1.6; }
 @media (max-width: 560px) { .offer { grid-template-columns: 1fr; } }
+
+/* --- wave variants --- */
+.preview .variant { padding: 1px 6px; border-radius: 3px; font-size: 11px; letter-spacing: 1.5px; margin-right: 4px; }
+.preview .v-swarm { color: #ffe08a; background: rgba(160, 120, 20, 0.35); border: 1px solid #a07818; }
+.preview .v-chubby { color: #ffb0a0; background: rgba(140, 40, 30, 0.4); border: 1px solid #8a2a20; }

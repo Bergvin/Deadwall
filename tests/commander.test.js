@@ -236,3 +236,74 @@ test('plunder bonus pays extra kill gold fractionally', () => {
   for (let i = 0; i < 4; i++) sim.zombies.damage(sim.zombies.spawn('walker', 5.5, 5.5), 1e9);
   assert.equal(sim.economy.gold - g, 4 * CFG.ZOMBIES.walker.reward * 1.5);
 });
+
+// --- wave variants ---
+import { waveComposition, rollVariant } from '../src/core/waves.js';
+
+test('wave variants: swarm is many weak runners/walkers, chubby is few tanky brutes', () => {
+  const { WAVE_TABLE: T, ELITE: E, WAVE_VARIANTS: V } = CFG;
+  const n = 8;
+  const normal = waveComposition(n, T, E);
+  const swarm = waveComposition(n, T, E, V.types.swarm);
+  const chubby = waveComposition(n, T, E, V.types.chubby);
+  const total = (c) => c.groups.reduce((s, g) => s + g.count, 0);
+  const types = (c) => c.groups.map((g) => g.type).sort();
+  assert.ok(total(swarm) > total(normal) * 1.8);
+  assert.deepEqual(types(swarm), ['runner', 'walker']);
+  assert.ok(swarm.hpMultiplier < normal.hpMultiplier && swarm.spawnIntervalMult < 1 && swarm.rewardMult < 1);
+  assert.ok(total(chubby) < total(normal) / 2);
+  assert.ok(!types(chubby).includes('runner'));
+  assert.ok(chubby.groups.find((g) => g.type === 'brute').count >= 3);
+  assert.ok(chubby.hpMultiplier > normal.hpMultiplier && chubby.spawnIntervalMult > 1);
+});
+
+test('wave variants: early and boss waves are normal, specials never repeat, all kinds appear', () => {
+  const { WAVE_TABLE: T, WAVE_VARIANTS: V } = CFG;
+  const rnd = seq(4);
+  const seen = new Set();
+  let prev = null;
+  for (let n = 1; n <= 400; n++) {
+    const v = rollVariant(n, V, T, prev, rnd);
+    if (n <= V.normalUntil || n % T.bossEvery === 0) assert.equal(v, 'normal', `wave ${n}`);
+    if (v !== 'normal') assert.notEqual(v, prev, `wave ${n} repeats ${v}`);
+    if (n < V.types[v].fromWave) assert.fail(`${v} too early at ${n}`);
+    seen.add(v);
+    prev = v;
+  }
+  assert.deepEqual([...seen].sort(), ['chubby', 'normal', 'swarm']);
+});
+
+test('wave variants in a run: preview matches the wave that starts, swarm kills pay less', () => {
+  const sim = new Simulation({ seed: 5 });
+  let checked = 0;
+  for (let w = 0; w < 14; w++) {
+    const pv = sim.waves.preview();
+    sim.waves.startNext();
+    assert.equal(sim.waves.variant, pv.variant);
+    assert.equal(sim.waves.queue.length, pv.groups.reduce((s, g) => s + g.count, 0) + (pv.boss ? 1 : 0));
+    if (pv.variant === 'swarm') {
+      for (let i = 0; i < 40 && sim.waves.queue.length; i++) sim.waves.step(0.2);
+      const z = sim.zombies.list.find((q) => q.type === 'walker');
+      assert.ok(z.reward < CFG.ZOMBIES.walker.reward);
+      checked++;
+    }
+    for (const z of sim.zombies.list) sim.zombies.damage(z, 1e9);
+    sim.waves.queue.length = 0;
+    sim.waves.step(0.1);
+    assert.equal(sim.waves.phase, 'prep');
+  }
+  assert.ok(checked > 0, 'saw at least one swarm');
+});
+
+test('champion: high level cap and wave-clear XP that never skips past levels', () => {
+  assert.ok(CFG.HERO_RULES.maxLevel >= 50, 'the champion can grow far past level 10');
+  const sim = new Simulation({ seed: 8 });
+  const h = sim.heroes.recruitChampion('warrior');
+  const need = sim.heroes.xpToNext(h);
+  sim.heroes.awardWaveXp();
+  assert.equal(h.level, 1);
+  assert.equal(Math.round(h.xp), Math.round(need * CFG.HERO_RULES.waveClearLevelFraction));
+  sim.heroes.awardWaveXp();
+  assert.equal(h.level, 2, 'two cleared waves without kills = one level');
+  for (let l = 1; l < 60; l++) assert.ok(CFG.HERO_RULES.xpToNext(l + 1) > CFG.HERO_RULES.xpToNext(l));
+});

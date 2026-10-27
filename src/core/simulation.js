@@ -64,7 +64,7 @@ export class Simulation {
     });
     this.waves = new WaveSystem({
       zombies: this.zombies, economy: this.economy, events: this.events, rng: this.rng,
-      cfg: c.WAVES, table: c.WAVE_TABLE, elite: c.ELITE, map: c.MAP,
+      cfg: c.WAVES, table: c.WAVE_TABLE, elite: c.ELITE, map: c.MAP, variants: c.WAVE_VARIANTS,
     });
     this.towers = new TowerSystem({
       walls: this.walls, zombies: this.zombies, projectiles: this.projectiles, economy: this.economy,
@@ -129,6 +129,7 @@ export class Simulation {
         u.lastWaveDamage = u.waveDamage;
         u.lastWaveDps = u.waveDamage / duration;
       }
+      this.heroes.awardWaveXp();
       this.heroes.healAll();
       this.stats.wavesCleared++;
       this.stats.score += c.SCORE.perWaveCleared;

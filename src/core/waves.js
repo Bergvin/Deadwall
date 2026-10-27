@@ -4,16 +4,22 @@ export const PHASE = { PREP: 'prep', ACTIVE: 'active' };
 
 /**
  * Enemy composition of wave n (pure, used for spawning, previews and tests).
+ * @param {object} [variant] a WAVE_VARIANTS entry (normal when omitted)
  * @returns {{groups: {type:string, count:number}[], boss: string|null, hpMultiplier:number,
- *            damageMultiplier:number, eliteChance:number}}
+ *            damageMultiplier:number, eliteChance:number, spawnIntervalMult:number,
+ *            rewardMult:number}}
  */
-export function waveComposition(n, table, elite) {
-  const groups = [];
+export function waveComposition(n, table, elite, variant = null) {
+  const v = variant ?? {};
+  const counts = new Map();
   for (const g of table.groups) {
     if (n < g.from) continue;
-    const count = Math.floor(g.base + g.perWave * (n - g.from));
-    if (count > 0) groups.push({ type: g.type, count });
+    const mult = v.countMult ? (v.countMult[g.type] ?? v.countMult.default ?? 1) : 1;
+    counts.set(g.type, Math.floor((g.base + g.perWave * (n - g.from)) * mult));
   }
+  for (const [type, min] of Object.entries(v.ensure ?? {})) counts.set(type, Math.max(counts.get(type) ?? 0, min));
+  const groups = [];
+  for (const [type, count] of counts) if (count > 0) groups.push({ type, count });
   const boss = n % table.bossEvery === 0
     ? table.bosses[(n / table.bossEvery - 1) % table.bosses.length] : null;
   const eliteChance = elite && n >= elite.fromWave
@@ -21,23 +27,48 @@ export function waveComposition(n, table, elite) {
   return {
     groups,
     boss,
-    hpMultiplier: 1 + table.hpGrowth * (n - 1) + table.hpGrowthLate * (n - 1) ** 2,
+    hpMultiplier: (1 + table.hpGrowth * (n - 1) + table.hpGrowthLate * (n - 1) ** 2) * (v.hpMult ?? 1),
     damageMultiplier: 1 + table.damageGrowth * (n - 1),
     eliteChance,
+    spawnIntervalMult: v.spawnIntervalMult ?? 1,
+    rewardMult: v.rewardMult ?? 1,
   };
 }
 
+/**
+ * Picks the variant of wave n. Boss waves and early waves are normal; a special variant
+ * never follows itself. rnd() -> [0, 1).
+ */
+export function rollVariant(n, variants, table, previous, rnd) {
+  if (!variants || n <= variants.normalUntil || n % table.bossEvery === 0) return 'normal';
+  const pool = Object.entries(variants.types)
+    .filter(([k, t]) => n >= (t.fromWave ?? 1) && (k === 'normal' || k !== previous));
+  let r = rnd() * pool.reduce((s, [, t]) => s + t.weight, 0);
+  for (const [k, t] of pool) if ((r -= t.weight) < 0) return k;
+  return 'normal';
+}
+
 export class WaveSystem {
-  /** @param {{zombies, economy, events, rng, cfg, table, elite, map}} deps */
-  constructor({ zombies, economy, events, rng, cfg, table, elite, map }) {
-    Object.assign(this, { zombies, economy, events, rng, cfg, table, elite, map });
+  /** @param {{zombies, economy, events, rng, cfg, table, elite, map, variants?}} deps */
+  constructor({ zombies, economy, events, rng, cfg, table, elite, map, variants = null }) {
+    Object.assign(this, { zombies, economy, events, rng, cfg, table, elite, map, variants });
     this.wave = 0; // last started wave
     this.phase = PHASE.PREP;
     this.countdown = cfg.firstPrepTime;
     this.queue = []; // {type, elite} still to spawn this wave
     this.spawnTimer = 0;
     this.hpMultiplier = 1;
+    this.spawnIntervalMult = 1;
+    this.rewardMult = 1;
     this.cleared = 0;
+    /** Variant of the wave being fought (or last fought) and of the next one. */
+    this.variant = 'normal';
+    this.nextVariant = rollVariant(1, variants, table, null, () => this.rng.next());
+  }
+
+  /** Config entry of a variant key. */
+  variantInfo(key = this.nextVariant) {
+    return this.variants?.types[key] ?? { name: 'Wave', label: null, banner: '' };
   }
 
   get nextWave() {
@@ -46,7 +77,8 @@ export class WaveSystem {
 
   /** Composition of the upcoming wave (for the HUD preview). */
   preview(n = this.nextWave) {
-    return waveComposition(n, this.table, this.elite);
+    const key = n === this.nextWave ? this.nextVariant : 'normal';
+    return { ...waveComposition(n, this.table, this.elite, this.variants?.types[key]), variant: key };
   }
 
   get remaining() {
@@ -56,9 +88,12 @@ export class WaveSystem {
   /** Starts the next wave now. Only valid during preparation, so it can never double up. */
   startNext() {
     if (this.phase !== PHASE.PREP) return false;
+    const comp = this.preview(this.nextWave);
     this.wave++;
-    const comp = this.preview(this.wave);
+    this.variant = comp.variant;
     this.hpMultiplier = comp.hpMultiplier;
+    this.spawnIntervalMult = comp.spawnIntervalMult;
+    this.rewardMult = comp.rewardMult;
     this.zombies.damageMultiplier = comp.damageMultiplier;
     this.queue = [];
     for (const g of comp.groups) {
@@ -73,13 +108,14 @@ export class WaveSystem {
     if (comp.boss) this.queue.splice(Math.floor(this.queue.length / 3), 0, { type: comp.boss, elite: false });
     this.spawnTimer = 0;
     this.phase = PHASE.ACTIVE;
-    this.events.emit('waveStarted', { wave: this.wave, count: this.queue.length, boss: comp.boss });
+    this.events.emit('waveStarted', { wave: this.wave, count: this.queue.length, boss: comp.boss, variant: this.variant });
     return true;
   }
 
   get spawnInterval() {
     const c = this.cfg;
-    return Math.max(c.minSpawnInterval, c.spawnInterval - c.spawnIntervalDecay * (this.wave - 1));
+    const base = Math.max(c.minSpawnInterval, c.spawnInterval - c.spawnIntervalDecay * (this.wave - 1));
+    return base * this.spawnIntervalMult;
   }
 
   step(dt) {
@@ -96,7 +132,9 @@ export class WaveSystem {
         const boss = this.zombies.types[type].boss;
         const x = boss ? this.map.width / 2 + this.rng.range(-4, 4) : this.rng.range(0.5, this.map.width - 0.5);
         const z = this.rng.range(0.3, this.map.spawnRows - 0.3);
-        this.zombies.spawn(type, x, z, this.hpMultiplier, { elite });
+        // Bosses keep their full bounty whatever the wave variant.
+        const hp = boss ? this.hpMultiplier / (this.variants?.types[this.variant]?.hpMult ?? 1) : this.hpMultiplier;
+        this.zombies.spawn(type, x, z, hp, { elite, rewardMult: boss ? 1 : this.rewardMult });
       }
       return;
     }
@@ -104,6 +142,7 @@ export class WaveSystem {
       const bonus = this.cfg.clearBonusBase + this.cfg.clearBonusPerWave * this.wave;
       this.economy.earn(bonus, `wave:${this.wave}`);
       this.cleared = this.wave;
+      this.nextVariant = rollVariant(this.wave + 1, this.variants, this.table, this.variant, () => this.rng.next());
       this.phase = PHASE.PREP;
       this.countdown = this.cfg.prepTime;
       this.events.emit('waveCleared', { wave: this.wave, bonus });

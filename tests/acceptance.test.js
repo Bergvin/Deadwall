@@ -44,14 +44,15 @@ test('the prep countdown starts the next wave automatically, exactly once', () =
 test('difficulty rises across real waves: more enemies with more health', () => {
   const sim = rich(23);
   const seen = [];
-  sim.events.on('waveStarted', ({ wave, count }) => seen.push({ wave, count, hp: sim.waves.hpMultiplier }));
+  // Variants (swarm/chubby) reshape single waves on purpose; the trend is checked on normal waves.
+  sim.events.on('waveStarted', ({ wave, count, variant }) => { if (variant === 'normal') seen.push({ wave, count, hp: sim.waves.hpMultiplier }); });
   for (let w = 0; w < 6; w++) {
     sim.waves.startNext();
     for (const z of [...sim.zombies.list]) sim.zombies.damage(z, 1e9);
     sim.events.on('zombieSpawned', (z) => sim.zombies.damage(z, 1e9));
     sim.run(60);
   }
-  assert.ok(seen.length >= 6);
+  assert.ok(seen.length >= 3);
   for (let i = 1; i < seen.length; i++) {
     assert.ok(seen[i].count >= seen[i - 1].count && seen[i].hp > seen[i - 1].hp, `wave ${seen[i].wave}`);
   }

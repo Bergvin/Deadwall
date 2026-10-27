@@ -74,7 +74,10 @@ export class Hud {
       this.toast(`A ${this.cfg.ZOMBIES[z.type].name} is crossing the field from the west!`, 'good');
     });
     ev.on('wandererEscaped', ({ zombie }) => this.toast(`The ${this.cfg.ZOMBIES[zombie.type].name} escaped.`, 'alert'));
-    ev.on('waveStarted', ({ wave }) => this.showBanner(`Wave ${wave}`, 'The dead are coming'));
+    ev.on('waveStarted', ({ wave, variant }) => {
+      const v = sim.waves.variantInfo(variant);
+      this.showBanner(v.label ? `${v.name} · Wave ${wave}` : `Wave ${wave}`, v.banner || 'The dead are coming');
+    });
     ev.on('waveCleared', ({ wave, bonus }) => this.showBanner(`Wave ${wave} cleared`, `+${bonus} gold`));
     ev.on('heroUnseated', ({ hero, cause }) => {
       if (cause === 'destroyed') this.toast(`${hero.name}'s wall fell. ${hero.name} retreats to the reserve.`);
@@ -590,7 +593,10 @@ export class Hud {
     if (prep) {
       const comp = w.preview();
       const parts = comp.groups.map((g) => `${g.count} ${this.cfg.ZOMBIES[g.type].name}${g.count > 1 ? 's' : ''}`);
-      pv = `<span class="label">Next wave</span> ${parts.join(' · ')}`
+      const v = w.variantInfo(comp.variant);
+      pv = `<span class="label">Next wave</span> `
+        + (v.label ? `<b class="variant v-${comp.variant}">${v.label}</b> ` : '')
+        + parts.join(' · ')
         + (comp.boss ? ` · <b class="boss">BOSS: ${this.cfg.ZOMBIES[comp.boss].name}</b>` : '')
         + (comp.eliteChance ? ` · <span class="elite">elites ${Math.round(comp.eliteChance * 100)}%</span>` : '');
     }

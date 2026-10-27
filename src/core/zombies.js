@@ -111,9 +111,10 @@ export class ZombieSystem {
    * @param {number} x world x
    * @param {number} z world z
    * @param {number} hpMultiplier wave scaling
-   * @param {{elite?: boolean, rng?: object}} [opts] rng: random stream for per-zombie rolls
+   * @param {{elite?: boolean, rng?: object, rewardMult?: number}} [opts] rng: random stream for
+   *   per-zombie rolls; rewardMult scales gold and XP (wave variants)
    */
-  spawn(typeKey, x, z, hpMultiplier = 1, { elite = false, rng = this.rng } = {}) {
+  spawn(typeKey, x, z, hpMultiplier = 1, { elite = false, rng = this.rng, rewardMult = 1 } = {}) {
     const t = this.types[typeKey];
     const e = elite && this.elite ? this.elite : null;
     const hp = Math.round(t.hp * hpMultiplier * (e ? e.hpMult : 1));
@@ -131,8 +132,8 @@ export class ZombieSystem {
       wallDamage: dmg,
       attackInterval: t.attackInterval,
       attackTimer: rng.range(0, t.attackInterval),
-      reward: Math.round(t.reward * (e ? e.rewardMult : 1)),
-      xp: t.xp * (e ? e.xpMult : 1),
+      reward: Math.max(1, Math.round(t.reward * (e ? e.rewardMult : 1) * rewardMult)),
+      xp: t.xp * (e ? e.xpMult : 1) * rewardMult,
       scale: (t.scale ?? 1) * (e ? e.scaleMult : 1),
       profile: t.siege ? 'siege' : t.charge ? 'charge' : t.wanderer ? 'wanderer' : 'default',
       wanderer: !!t.wanderer,

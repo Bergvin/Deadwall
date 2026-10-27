@@ -45,7 +45,7 @@ export const FORTRESS = {
 };
 
 // Zombie, boss, elite and wave-composition config lives in enemies.js.
-export { ZOMBIES, ELITE, WAVE_TABLE, WANDERERS } from './enemies.js';
+export { ZOMBIES, ELITE, WAVE_TABLE, WAVE_VARIANTS, WANDERERS } from './enemies.js';
 
 // Commander perks, artifacts and loot tables live in commander.js.
 export { LOOT_TABLES } from './commander.js';

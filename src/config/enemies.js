@@ -139,10 +139,10 @@ export const WANDERERS = {
 
 /** Elite variants: stronger, glowing, worth more. */
 export const ELITE = {
-  fromWave: 4,
-  chance: 0.04,
-  chancePerWave: 0.01,
-  maxChance: 0.25,
+  fromWave: 3,
+  chance: 0.06,
+  chancePerWave: 0.012,
+  maxChance: 0.35,
   hpMult: 2.5,
   damageMult: 1.5,
   rewardMult: 3,
@@ -156,11 +156,11 @@ export const ELITE = {
  */
 export const WAVE_TABLE = {
   groups: [
-    { type: 'walker', from: 1, base: 8, perWave: 3 },
-    { type: 'runner', from: 2, base: 2, perWave: 1.5 },
-    { type: 'brute', from: 4, base: 1, perWave: 0.7 },
-    { type: 'plague', from: 5, base: 1, perWave: 0.4 },
-    { type: 'siege', from: 6, base: 1, perWave: 0.5 },
+    { type: 'walker', from: 1, base: 10, perWave: 3.5 },
+    { type: 'runner', from: 2, base: 3, perWave: 2 },
+    { type: 'brute', from: 3, base: 1, perWave: 0.9 },
+    { type: 'plague', from: 5, base: 1, perWave: 0.5 },
+    { type: 'siege', from: 6, base: 1, perWave: 0.7 },
   ],
   bossEvery: 5,
   bosses: ['behemoth', 'gravelord'],
@@ -168,7 +168,45 @@ export const WAVE_TABLE = {
    * Enemy HP multiplier: 1 + hpGrowth * (n - 1) + hpGrowthLate * (n - 1)^2 (gentle early,
    * steeper late so endless runs end). Damage: 1 + damageGrowth * (n - 1).
    */
-  hpGrowth: 0.1,
-  hpGrowthLate: 0.02,
-  damageGrowth: 0.04,
+  hpGrowth: 0.13,
+  hpGrowthLate: 0.026,
+  damageGrowth: 0.06,
+};
+
+/**
+ * Wave variants. Before each wave one is rolled (weights, from `fromWave`); boss waves and
+ * the first `normalUntil` waves are always normal, and a special variant never repeats
+ * back to back. A variant reshapes the normal composition:
+ *   countMult  - multiplies each type's count (`default` for types not listed; 0 removes)
+ *   ensure     - minimum count per type (adds types that are not out yet)
+ *   hpMult     - on top of the wave's HP scaling
+ *   spawnIntervalMult - < 1 pours them in faster, > 1 slower
+ *   rewardMult - gold and XP per kill, so a swarm is not a gold mine
+ */
+export const WAVE_VARIANTS = {
+  normalUntil: 2,
+  types: {
+    normal: {
+      name: 'Wave', label: null, weight: 5, fromWave: 1,
+      banner: 'The dead are coming',
+    },
+    swarm: {
+      name: 'Swarm', label: 'SWARM', weight: 2, fromWave: 3,
+      banner: 'A tide of fast, frail dead',
+      countMult: { walker: 2.5, runner: 3, default: 0 },
+      ensure: { runner: 6 },
+      hpMult: 0.6,
+      spawnIntervalMult: 0.35,
+      rewardMult: 0.5,
+    },
+    chubby: {
+      name: 'Chubby Wave', label: 'CHUBBY', weight: 2, fromWave: 4,
+      banner: 'Few of them. Very hard to kill.',
+      countMult: { brute: 2, siege: 1.6, plague: 1.3, walker: 0.15, runner: 0 },
+      ensure: { brute: 3 },
+      hpMult: 1.6,
+      spawnIntervalMult: 2.5,
+      rewardMult: 1.4,
+    },
+  },
 };

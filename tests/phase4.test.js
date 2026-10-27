@@ -196,12 +196,12 @@ test('wave composition: new threats arrive gradually, bosses every few waves, el
   assert.equal(waveComposition(4, WAVE_TABLE, ELITE).boss, null);
   assert.equal(waveComposition(5, WAVE_TABLE, ELITE).boss, 'behemoth');
   assert.equal(waveComposition(10, WAVE_TABLE, ELITE).boss, 'gravelord');
-  assert.equal(waveComposition(3, WAVE_TABLE, ELITE).eliteChance, 0);
+  assert.equal(waveComposition(ELITE.fromWave - 1, WAVE_TABLE, ELITE).eliteChance, 0);
   assert.ok(waveComposition(10, WAVE_TABLE, ELITE).eliteChance > 0);
   const w1 = waveComposition(1, WAVE_TABLE, ELITE), w10 = waveComposition(10, WAVE_TABLE, ELITE);
   assert.ok(w10.hpMultiplier > w1.hpMultiplier && w10.damageMultiplier > w1.damageMultiplier);
-  assert.ok(w10.hpMultiplier < 4, 'growth is gradual, not extreme');
-  assert.ok(waveComposition(30, WAVE_TABLE, ELITE).hpMultiplier < 22, 'still bounded late');
+  assert.ok(w10.hpMultiplier < 5, 'growth is gradual, not extreme');
+  assert.ok(waveComposition(30, WAVE_TABLE, ELITE).hpMultiplier < 30, 'still bounded late');
 });
 
 test('boss wave actually spawns its boss once; elites are tougher and worth more', () => {

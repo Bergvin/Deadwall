@@ -12,9 +12,20 @@ export const HERO_RULES = {
   repositionTime: 3,
   /** XP per point of damage dealt (kill XP is added on top). */
   xpPerDamage: 0.2,
-  maxLevel: 10,
-  /** XP needed to go from level L to L+1. */
-  xpToNext: (level) => Math.round(30 * level ** 1.6),
+  /** The champion keeps growing through a long run: about 1-2 levels per wave. */
+  maxLevel: 100,
+  /**
+   * XP needed to go from level L to L+1. Measured champion XP per wave (tools/simulate.js
+   * with LEVELS=1): ~220 in wave 1, ~1400 in wave 5, 2000-3000 in wave 10, up to ~10000 in
+   * wave 20. With the wave-clear XP below this keeps every class at roughly 1-2 levels per
+   * wave throughout.
+   */
+  xpToNext: (level) => Math.round(60 * level ** 1.55),
+  /**
+   * Every cleared wave also gives each hero this fraction of its current level's XP, so
+   * support champions (warrior, paladin) keep pace with the damage dealers.
+   */
+  waveClearLevelFraction: 0.6,
   /** Ability point targets may be this far beyond the hero's attack range. */
   abilityRangeBonus: 1,
   /** HP fraction at which a hero triggers a low-health warning. */

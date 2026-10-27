@@ -1,5 +1,6 @@
 // Balance check: plays headless runs with scripted strategies and reports how far they get.
 // Usage: node tools/simulate.js [runs=4] [strategy|all] [maxMinutes=150]
+// LEVELS=1 also prints the champion's level after every cleared wave (XP pacing check).
 // Every strategy except "none" builds rings of walls around the gate, repairs, revives the
 // champion and reinforces the gate. They differ in what they build on the walls:
 //   none       - does nothing (baseline: should fall in wave 1-2)
@@ -91,6 +92,8 @@ function play(seed, name, heroType) {
   const state = { next: 0, prepped: -1 };
   let bossesKilled = 0;
   sim.events.on('zombieKilled', ({ zombie }) => { if (zombie.boss) bossesKilled++; });
+  const levels = [];
+  sim.events.on('waveCleared', () => levels.push([...sim.heroes.all()][0]?.level ?? 0));
   while (!sim.over && sim.time < maxMinutes * 60) {
     if (sim.waves.phase === PHASE.PREP && state.prepped !== sim.waves.wave) {
       state.prepped = sim.waves.wave;
@@ -99,7 +102,7 @@ function play(seed, name, heroType) {
     }
     sim.step(DT);
   }
-  return { ...sim.summary(), bossesKilled, towers: sim.towers.count, timedOut: !sim.over };
+  return { ...sim.summary(), bossesKilled, levels, heroType, towers: sim.towers.count, timedOut: !sim.over };
 }
 
 const names = which === 'all' ? Object.keys(STRATEGIES) : [which];
@@ -110,5 +113,6 @@ for (const name of names) {
   const waves = res.map((r) => r.wave);
   const avg = waves.reduce((a, b) => a + b, 0) / runs;
   const capped = res.filter((r) => r.timedOut).length;
+  if (process.env.LEVELS) for (const r of res) console.log(`  ${r.heroType.padEnd(11)} level after each wave: ${r.levels.join(' ')}`);
   console.log(`${name.padEnd(7)} waves [${waves.join(', ')}] avg ${avg.toFixed(1)}  bosses ${(res.reduce((a, r) => a + r.bossesKilled, 0) / runs).toFixed(1)}  towers ${(res.reduce((a, r) => a + r.towers, 0) / runs).toFixed(0)}${capped ? `  (${capped} hit the ${maxMinutes}-min cap)` : ''}`);
 }
