@@ -299,9 +299,6 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 @media (max-width: 900px) { .champions { grid-template-columns: repeat(2, 1fr); } }
 
 /* --- commander, wanderers, artifacts --- */
-.bossbar.wanderer .bname { color: #c8dcff; text-shadow: 0 0 10px rgba(80, 130, 255, 0.8); }
-.bossbar.wanderer .bar { border-color: #2a3a6a; background: rgba(6, 10, 22, 0.85); }
-.bossbar.wanderer .bar > div { background: linear-gradient(90deg, #2a4aa0, #8ab4ff); }
 
 .cmdwrap { margin: 16px auto 4px; width: 260px; }
 .cmdsum { text-align: left; }
@@ -361,3 +358,16 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 .preview .variant { padding: 1px 6px; border-radius: 3px; font-size: 11px; letter-spacing: 1.5px; margin-right: 4px; }
 .preview .v-swarm { color: #ffe08a; background: rgba(160, 120, 20, 0.35); border: 1px solid #a07818; }
 .preview .v-chubby { color: #ffb0a0; background: rgba(140, 40, 30, 0.4); border: 1px solid #8a2a20; }
+
+/* --- artifact choice, abilities, levels --- */
+.screen .offertitle { font-family: var(--font); font-size: 17px; margin: 18px 0 8px; color: #e0d0b0; }
+.artcard .aicon { font-size: 26px; color: var(--rc); margin: 4px 0 0; }
+.artcard .pdesc { font-size: 12px; line-height: 1.45; margin-top: 4px; }
+.artcard .merge { color: var(--gold); font-size: 12px; font-weight: 700; margin-top: 2px; }
+.aabil { color: #b8d8ff; font-size: 11px; margin-top: 4px; line-height: 1.4; }
+.abilities .aabil { font-size: 13px; margin: 2px 0 6px; }
+.artifact .alvl, .pname .alvl { color: var(--gold); font-size: 11px; }
+.skilltag { font-size: 10px; letter-spacing: 1.5px; color: #b8d8ff; border: 1px solid #4a6a9a; border-radius: 3px; padding: 0 4px; margin-left: 4px; }
+.pickedmsg { margin: 8px 0 0; font-size: 14px; }
+.screen .box.wide .offer { text-align: center; }
+.floater.cmdab { color: #b8d8ff; font-family: var(--font); font-size: 15px; text-shadow: 0 0 8px rgba(80, 140, 255, 0.9); }

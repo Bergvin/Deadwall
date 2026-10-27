@@ -9,7 +9,7 @@ import { createMapGrid } from '../core/grid.js';
 import { GameLoop } from '../core/loop.js';
 import { loadSave, writeSave, recordRun } from '../core/save.js';
 import {
-  applyBonuses, totalBonuses, runXp, addXp, ensureOffer, choosePerk, addArtifact, equip, unequip, salvage,
+  runConfig, runXp, addXp, ensureOffer, choosePerk, equip, unequip, salvage, rollArtifactOffer, chooseArtifact, totalBonuses,
 } from '../core/commander.js';
 import { createStage } from '../render/setup.js';
 import { CameraController } from '../render/cameraController.js';
@@ -67,6 +67,7 @@ export class Game {
       onNewGame: () => this.chooseChampion(),
       onMenu: () => this.toMenu(),
       onCommander: () => this.openCommander(),
+      onChooseArtifact: (i) => this.pickArtifact(i),
       onResume: () => this.togglePause(),
       getSettings: () => this.save.settings,
       setSetting: (key, value) => this.setSetting(key, value),
@@ -113,9 +114,8 @@ export class Game {
       overlay: this.overlay, zombieView: this.zombieView, projectileView: this.projectileView,
       effects: this.effects, fx: this.fx, bars: this.bars, sfx: this.sfx, breaches: this.breaches, floaters: this.floaters, gateNode: this.gateNode,
       loop: this.loop, seed, heroType, togglePause: () => this.togglePause(),
-      // Every run plays with the Commander's perks and equipped artifacts.
-      config: applyBonuses(CFG, totalBonuses(this.save.commander)),
-      onArtifact: (drop) => this.collectArtifact(drop),
+      // Every run plays with the Commander's perks, skills and equipped artifacts.
+      config: runConfig(CFG, this.save.commander),
       settings: this.save.settings, setSetting: (k, v) => this.setSetting(k, v),
       onGameOver: (summary) => this.gameOver(summary),
     });
@@ -132,11 +132,16 @@ export class Game {
     this.screens.showMenu(this.save);
   }
 
-  /** Stores an artifact the moment it drops, so quitting a run never loses it. */
-  collectArtifact(drop) {
-    const res = addArtifact(this.save.commander, drop);
+  /** Takes one of the three run-end artifacts and shows the result where the player is. */
+  pickArtifact(index) {
+    const res = chooseArtifact(this.save.commander, index);
     writeSave(this.save);
-    return res;
+    if (!res) return;
+    if (this.state === STATE.OVER && this.lastRun) {
+      this.lastRun[3] = { ...this.lastRun[3], picked: res };
+      if (this.screens.cmd.hidden) { this.screens.showGameOver(...this.lastRun); return; }
+    }
+    this.openCommander({ picked: res });
   }
 
   /** Commander screen (from the menu or the game over screen). */
@@ -149,6 +154,7 @@ export class Game {
     const act = (fn) => (arg) => { fn(cmd, arg); writeSave(this.save); redraw(); };
     this.screens.showCommander(cmd, {
       choose: act(choosePerk),
+      chooseArtifact: (i) => this.pickArtifact(i),
       equip: act(equip),
       unequip: act(unequip),
       // Salvaging destroys an artifact, so it takes two clicks.
@@ -174,6 +180,9 @@ export class Game {
     this.save = rec.save;
     const xp = runXp(summary);
     const levels = addXp(this.save.commander, xp);
+    // Three artifacts to choose from: better odds the further this run got. It is saved
+    // right away, so closing the game does not lose the choice.
+    this.save.commander.artifactOffer = rollArtifactOffer(summary.wave, Math.random, totalBonuses(this.save.commander).artifactLuckPct ?? 0);
     writeSave(this.save);
     this.lastRun = [summary, this.save, rec, { xp, levels }];
     // Let the final moments play out behind the screen, then freeze.

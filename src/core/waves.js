@@ -27,8 +27,8 @@ export function waveComposition(n, table, elite, variant = null) {
   return {
     groups,
     boss,
-    hpMultiplier: (1 + table.hpGrowth * (n - 1) + table.hpGrowthLate * (n - 1) ** 2) * (v.hpMult ?? 1),
-    damageMultiplier: 1 + table.damageGrowth * (n - 1),
+    hpMultiplier: (table.hpBase ?? 1) * (1 + table.hpGrowth * (n - 1) + table.hpGrowthLate * (n - 1) ** 2) * (v.hpMult ?? 1),
+    damageMultiplier: (table.damageBase ?? 1) * (1 + table.damageGrowth * (n - 1)),
     eliteChance,
     spawnIntervalMult: v.spawnIntervalMult ?? 1,
     rewardMult: v.rewardMult ?? 1,
@@ -82,7 +82,7 @@ export class WaveSystem {
   }
 
   get remaining() {
-    return this.queue.length + this.zombies.hordeAlive;
+    return this.queue.length + this.zombies.aliveCount;
   }
 
   /** Starts the next wave now. Only valid during preparation, so it can never double up. */
@@ -138,7 +138,7 @@ export class WaveSystem {
       }
       return;
     }
-    if (this.zombies.hordeAlive === 0) {
+    if (this.zombies.aliveCount === 0) {
       const bonus = this.cfg.clearBonusBase + this.cfg.clearBonusPerWave * this.wave;
       this.economy.earn(bonus, `wave:${this.wave}`);
       this.cleared = this.wave;

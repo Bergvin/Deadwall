@@ -8,7 +8,6 @@ import './hud.css';
 import { PHASE } from '../core/waves.js';
 import { heroStats, abilityList } from '../core/heroStats.js';
 import { HeroRoster } from './roster.js';
-import { RARITY_INFO, ARTIFACTS } from '../config/commander.js';
 
 const h = (tag, cls, html) => {
   const el = document.createElement(tag);
@@ -69,11 +68,6 @@ export class Hud {
     ev.on('heroEndangered', (hero) => this.toast(`${hero.name} is badly hurt!`, 'alert'));
     ev.on('heroFell', (hero) => this.toast(`${hero.name} has fallen! Revive them between waves.`, 'alert'));
     ev.on('bossSpawned', (z) => this.showBanner(this.cfg.ZOMBIES[z.type].name, this.cfg.ZOMBIES[z.type].description));
-    ev.on('wandererSpawned', (z) => {
-      this.showBanner(this.cfg.ZOMBIES[z.type].name, this.cfg.ZOMBIES[z.type].description);
-      this.toast(`A ${this.cfg.ZOMBIES[z.type].name} is crossing the field from the west!`, 'good');
-    });
-    ev.on('wandererEscaped', ({ zombie }) => this.toast(`The ${this.cfg.ZOMBIES[zombie.type].name} escaped.`, 'alert'));
     ev.on('waveStarted', ({ wave, variant }) => {
       const v = sim.waves.variantInfo(variant);
       this.showBanner(v.label ? `${v.name} · Wave ${wave}` : `Wave ${wave}`, v.banner || 'The dead are coming');
@@ -575,14 +569,11 @@ export class Hud {
     this.muteBtn.classList.toggle('active', this.actions.isMuted());
 
     // Boss health bar.
-    // Boss health bar (a Wanderer uses it when no boss is alive).
-    const boss = sim.zombies.bosses[0] ?? sim.zombies.wanderers[0];
+    // Boss health bar.
+    const boss = sim.zombies.bosses[0];
     this.bossBar.hidden = !boss;
-    this.bossBar.classList.toggle('wanderer', !!boss?.wanderer);
     if (boss) {
-      const name = boss.wanderer
-        ? `${this.cfg.ZOMBIES[boss.type].name} · escapes in ${Math.max(0, Math.ceil((this.cfg.MAP.width - boss.x) / boss.speed))}s`
-        : `${boss.elite ? 'Elite ' : ''}${this.cfg.ZOMBIES[boss.type].name}`;
+      const name = `${boss.elite ? 'Elite ' : ''}${this.cfg.ZOMBIES[boss.type].name}`;
       const nameEl = this.bossBar.querySelector('.bname');
       if (nameEl.textContent !== name) nameEl.textContent = name;
       this.bossBar.querySelector('.bar > div').style.width = `${((boss.hp / boss.maxHp) * 100).toFixed(1)}%`;
@@ -604,14 +595,6 @@ export class Hud {
     this.preview.hidden = !pv;
     this.roster.tick();
     this.dyn?.();
-  }
-
-  /** Announces an artifact drop in its rarity colour. */
-  artifactFound({ id, rarity }, salvagedXp = 0) {
-    const r = RARITY_INFO[rarity];
-    const name = ARTIFACTS[id].name;
-    this.showBanner(`<span style="color:${r.color}">${name}</span>`, `${r.name} artifact${salvagedXp ? ` · stash full, salvaged for ${salvagedXp} XP` : ' · added to your Commander'}`);
-    this.toast(`Artifact found: <b style="color:${r.color}">${name}</b> (${r.name})`, 'good');
   }
 
   showBanner(title, sub) {

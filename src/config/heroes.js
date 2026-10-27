@@ -20,7 +20,9 @@ export const HERO_RULES = {
    * wave 20. With the wave-clear XP below this keeps every class at roughly 1-2 levels per
    * wave throughout.
    */
-  xpToNext: (level) => Math.round(60 * level ** 1.55),
+  // The second term only matters at high levels, where damage XP grows with the steep late
+  // enemy HP; it keeps deep runs near 1-2 levels per wave instead of racing to the cap.
+  xpToNext: (level) => Math.round(60 * level ** 1.55 + 2 * level ** 2.6),
   /**
    * Every cleared wave also gives each hero this fraction of its current level's XP, so
    * support champions (warrior, paladin) keep pace with the damage dealers.

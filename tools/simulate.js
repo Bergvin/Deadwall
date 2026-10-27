@@ -1,6 +1,8 @@
 // Balance check: plays headless runs with scripted strategies and reports how far they get.
 // Usage: node tools/simulate.js [runs=4] [strategy|all] [maxMinutes=150]
 // LEVELS=1 also prints the champion's level after every cleared wave (XP pacing check).
+// COMMANDER=fresh|mid|strong plays with a commander profile (perks, skills, artifacts);
+// targets: fresh dies around wave 5, a mid commander gets clearly further, strong far.
 // Every strategy except "none" builds rings of walls around the gate, repairs, revives the
 // champion and reinforces the gate. They differ in what they build on the walls:
 //   none       - does nothing (baseline: should fall in wave 1-2)
@@ -9,7 +11,45 @@
 //   mixed      - champion plus a rotation of all four elements, with upgrades and talents
 import { Simulation } from '../src/core/simulation.js';
 import { PHASE } from '../src/core/waves.js';
+import * as CFG from '../src/config/game.js';
 import { MAP, TOWERS } from '../src/config/game.js';
+import { commanderDefaults, addArtifact, runConfig } from '../src/core/commander.js';
+
+/** Commander profiles: what a player might have after some (mid) or many (strong) runs. */
+const PROFILES = {
+  fresh: { level: 1, perks: [], artifacts: [] },
+  mid: {
+    level: 12,
+    perks: [['sharpSteel', 'uncommon'], ['quickHands', 'common'], ['masonry', 'common'], ['warChest', 'uncommon'],
+      ['oakenGate', 'common'], ['skillMeteor', 'uncommon'], ['plunder', 'common'], ['engineers', 'common'],
+      ['sharpSteel', 'common'], ['skillJudgement', 'uncommon'], ['tribute', 'rare']],
+    artifacts: [['bloodstone', 'rare'], ['mortar', 'uncommon'], ['windcaller', 'uncommon'], ['gateWard', 'common']],
+  },
+  strong: {
+    level: 25,
+    perks: [['sharpSteel', 'rare'], ['sharpSteel', 'uncommon'], ['quickHands', 'rare'], ['quickHands', 'uncommon'],
+      ['masonry', 'rare'], ['warChest', 'legendary'], ['oakenGate', 'rare'], ['skillMeteor', 'rare'], ['plunder', 'rare'],
+      ['engineers', 'rare'], ['skillJudgement', 'legendary'], ['tribute', 'rare'], ['skillFrost', 'uncommon'],
+      ['eagleEyes', 'rare'], ['hardened', 'uncommon'], ['quarry', 'uncommon'], ['skillStorm', 'rare'], ['skillMasonry', 'uncommon'],
+      ['witheringCurse', 'legendary'], ['ironSpikes', 'common'], ['mentor', 'uncommon'], ['skillBulwark', 'uncommon'],
+      ['luckyStrikes', 'uncommon'], ['skillTithe', 'rare']],
+    artifacts: [['bloodstone', 'legendary', 3], ['mortar', 'rare', 2], ['windcaller', 'legendary', 2],
+      ['gateWard', 'rare', 2], ['heartOfWinter', 'rare', 2], ['kingslayer', 'legendary']],
+  },
+};
+
+function commanderConfig(name) {
+  const p = PROFILES[name];
+  if (!p) throw new Error(`unknown COMMANDER profile ${name}`);
+  const cmd = { ...commanderDefaults(), level: p.level };
+  cmd.perks = p.perks.map(([id, rarity]) => ({ id, rarity }));
+  for (const [id, rarity, level = 1] of p.artifacts) {
+    const a = addArtifact(cmd, { id, rarity }).artifact;
+    a.level = level;
+  }
+  return runConfig(CFG, cmd);
+}
+const runCfg = process.env.COMMANDER ? commanderConfig(process.env.COMMANDER) : undefined;
 
 const runs = Number(process.argv[2] ?? 4);
 const which = process.argv[3] ?? 'all';
@@ -87,7 +127,7 @@ function prepare(sim, st, state) {
 
 function play(seed, name, heroType) {
   const st = STRATEGIES[name];
-  const sim = new Simulation({ seed });
+  const sim = new Simulation({ seed, config: runCfg });
   sim.heroes.recruitChampion(heroType);
   const state = { next: 0, prepped: -1 };
   let bossesKilled = 0;
@@ -114,5 +154,5 @@ for (const name of names) {
   const avg = waves.reduce((a, b) => a + b, 0) / runs;
   const capped = res.filter((r) => r.timedOut).length;
   if (process.env.LEVELS) for (const r of res) console.log(`  ${r.heroType.padEnd(11)} level after each wave: ${r.levels.join(' ')}`);
-  console.log(`${name.padEnd(7)} waves [${waves.join(', ')}] avg ${avg.toFixed(1)}  bosses ${(res.reduce((a, r) => a + r.bossesKilled, 0) / runs).toFixed(1)}  towers ${(res.reduce((a, r) => a + r.towers, 0) / runs).toFixed(0)}${capped ? `  (${capped} hit the ${maxMinutes}-min cap)` : ''}`);
+  console.log(`${process.env.COMMANDER ? `[${process.env.COMMANDER}] ` : ''}${name.padEnd(7)} waves [${waves.join(', ')}] avg ${avg.toFixed(1)}  bosses ${(res.reduce((a, r) => a + r.bossesKilled, 0) / runs).toFixed(1)}  towers ${(res.reduce((a, r) => a + r.towers, 0) / runs).toFixed(0)}${capped ? `  (${capped} hit the ${maxMinutes}-min cap)` : ''}`);
 }

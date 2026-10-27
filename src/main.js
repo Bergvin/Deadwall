@@ -1,5 +1,5 @@
 import { Game } from './game/game.js';
-import { addXp } from './core/commander.js';
+import { addXp, addArtifact, rollArtifactOffer } from './core/commander.js';
 import { writeSave } from './core/save.js';
 
 const game = new Game();
@@ -65,12 +65,12 @@ window.debug = {
     return { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height };
   },
   cellAt: (cx, cy) => game.session?.input.cellAt(cx, cy),
-  /** Sends a Wanderer across the field now (wraith | colossus | eclipse, or random). */
-  wanderer: (type) => sim().wanderers.spawn(Math.max(sim().waves.wave, 20), type),
   /** The persistent commander record. */
   commander: () => game.save.commander,
   /** Gives commander XP (levels up and saves). */
   commanderXp(n) { const l = addXp(game.save.commander, n); writeSave(game.save); return l; },
-  /** Adds an artifact to the stash: debug.giveArtifact('bloodstone', 'legendary'). */
-  giveArtifact: (id, rarity = 'common') => game.collectArtifact({ id, rarity }),
+  /** Adds an artifact to the stash (merging like a real pick): debug.giveArtifact('bloodstone', 'legendary'). */
+  giveArtifact(id, rarity = 'common') { const r = addArtifact(game.save.commander, { id, rarity }); writeSave(game.save); return r; },
+  /** Rolls a run-end artifact offer as if a run had reached `wave`. */
+  artifactOffer(wave = 10) { game.save.commander.artifactOffer = rollArtifactOffer(wave, Math.random); writeSave(game.save); return game.save.commander.artifactOffer; },
 };

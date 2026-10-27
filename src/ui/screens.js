@@ -1,6 +1,5 @@
 // Full-screen overlays: main menu, game over, commander, pause badge.
-import { commanderSummary, renderCommander } from './commanderScreen.js';
-import { RARITY_INFO, ARTIFACTS } from '../config/commander.js';
+import { commanderSummary, renderCommander, artifactOfferCards, pickedText } from './commanderScreen.js';
 const h = (tag, cls, html) => {
   const el = document.createElement(tag);
   if (cls) el.className = cls;
@@ -129,13 +128,15 @@ export class Screens {
   /**
    * @param {object} summary Simulation.summary()
    * @param {{newBestWave:boolean, newHighScore:boolean}} rec
-   * @param {{xp:number, levels:number}} [progress] commander XP from this run
+   * @param {{xp:number, levels:number, picked?:object}} [progress] commander XP from this run and
+   *   the result of the artifact choice once made
    */
   showGameOver(summary, save, rec, progress = { xp: 0, levels: 0 }) {
     this.cmd.hidden = true;
     this.over.hidden = false;
     this.over.innerHTML = '';
-    const box = h('div', 'box', '<h2>The Gate Has Fallen</h2><div class="tagline">The dead pour into the fortress.</div>');
+    const offer = save.commander.artifactOffer?.length;
+    const box = h('div', `box${offer ? ' wide' : ''}`, '<h2>The Gate Has Fallen</h2><div class="tagline">The dead pour into the fortress.</div>');
     if (rec.newBestWave || rec.newHighScore) {
       box.append(h('div', 'newrec', rec.newHighScore ? 'New high score!' : 'New best wave!'));
     }
@@ -150,15 +151,15 @@ export class Screens {
       + `<span>Time survived</span><b>${fmtTime(summary.time)}</b>`
       + `<span>Best wave</span><b>${save.bestWave}</b>`
       + `<span>High score</span><b>${save.highScore}</b>`));
-    const found = summary.artifacts ?? [];
     const loot = h('div', 'runloot',
       `<div class="xpgain">+${progress.xp} commander XP${progress.levels ? ` · <b>Level up${progress.levels > 1 ? ` ×${progress.levels}` : ''}!</b>` : ''}</div>`
-      + (found.length
-        ? `<div class="found">Artifacts found: ${found.map((a) => `<span style="color:${RARITY_INFO[a.rarity].color}">${ARTIFACTS[a.id].name}</span>`).join(', ')}</div>`
-        : '')
-      + (summary.wanderersSlain || summary.wanderersEscaped
-        ? `<div class="dim small">Wanderers slain ${summary.wanderersSlain ?? 0} · escaped ${summary.wanderersEscaped ?? 0}</div>` : ''));
-    box.append(loot, this.#commanderButton(save.commander));
+      + (progress.picked ? `<div class="pickedmsg">${pickedText(progress.picked)}</div>` : ''));
+    box.append(loot);
+    if (offer) {
+      box.append(h('h3', 'offertitle', `Choose an artifact <span class="dim">· the further you get, the better the odds</span>`));
+      box.append(artifactOfferCards(save.commander, (i) => this.handlers.onChooseArtifact(i)));
+    }
+    box.append(this.#commanderButton(save.commander));
     const again = h('button', 'btn big primary', 'Play Again');
     again.addEventListener('click', () => this.handlers.onNewGame());
     const menu = h('button', 'btn big', 'Main Menu');

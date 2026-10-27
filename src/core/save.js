@@ -33,13 +33,16 @@ export function sanitizeCommander(raw) {
   const artifacts = (Array.isArray(raw.artifacts) ? raw.artifacts : [])
     .filter((a) => a && ARTIFACTS[a.id] && isRarity(a.rarity) && Number.isInteger(a.uid) && a.uid > 0 && !seen.has(a.uid) && seen.add(a.uid))
     .slice(0, COMMANDER.maxStash)
-    .map((a) => ({ uid: a.uid, id: a.id, rarity: a.rarity }));
+    .map((a) => ({ uid: a.uid, id: a.id, rarity: a.rarity, level: Math.min(COMMANDER.artifactMaxLevel, Math.max(1, nonNegInt(a.level))) }));
   const uids = new Set(artifacts.map((a) => a.uid));
   const equipped = [...new Set(Array.isArray(raw.equipped) ? raw.equipped : [])]
     .filter((u) => uids.has(u)).slice(0, slotCount(level));
   const pendingPicks = nonNegInt(raw.pendingPicks);
   const offer = pendingPicks && Array.isArray(raw.offer) && raw.offer.length && raw.offer.every(validPerk)
     ? raw.offer.map((p) => ({ id: p.id, rarity: p.rarity })) : null;
+  const artifactOffer = Array.isArray(raw.artifactOffer) && raw.artifactOffer.length
+    && raw.artifactOffer.length <= COMMANDER.offerSize && raw.artifactOffer.every((a) => a && ARTIFACTS[a.id] && isRarity(a.rarity))
+    ? raw.artifactOffer.map((a) => ({ id: a.id, rarity: a.rarity })) : null;
   return {
     level,
     xp: Math.min(nonNegInt(raw.xp), COMMANDER.xpToNext(level) - 1),
@@ -49,6 +52,7 @@ export function sanitizeCommander(raw) {
     artifacts,
     equipped,
     nextUid: Math.max(nonNegInt(raw.nextUid), ...artifacts.map((a) => a.uid + 1), 1),
+    artifactOffer,
   };
 }
 

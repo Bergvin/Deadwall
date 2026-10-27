@@ -15,8 +15,7 @@ import { WallEffectSystem } from './wallEffects.js';
 import { HazardSystem } from './hazards.js';
 import { TowerSystem } from './towers.js';
 import { WaveSystem, PHASE } from './waves.js';
-import { WandererSystem } from './wanderers.js';
-import { rollLoot } from './commander.js';
+import { CommanderAbilitySystem } from './commanderAbilities.js';
 import { createRng } from './rng.js';
 
 export class Simulation {
@@ -31,14 +30,9 @@ export class Simulation {
     this.over = false;
     this.stats = {
       kills: 0, goldEarned: 0, score: 0, wavesCleared: 0, wallsBuilt: 0, wallsLost: 0,
-      wanderersSlain: 0, wanderersEscaped: 0, bossesSlain: 0,
+      bossesSlain: 0,
     };
-    /** Artifacts found this run ({id, rarity}), in drop order. */
-    this.artifacts = [];
-    // Separate random streams: Wanderer sightings and loot never shift the horde's rolls.
-    this.wanderRng = createRng((seed ^ 0x5a17e) >>> 0);
-    this.lootRng = createRng((seed ^ 0x10075) >>> 0);
-    this.bonus = { killGoldPct: 0, artifactLuckPct: 0, ...(c.BONUS ?? {}) };
+    this.bonus = { killGoldPct: 0, ...(c.BONUS ?? {}) };
     this.killGoldCarry = 0;
 
     this.grid = createMapGrid(c.MAP);
@@ -72,9 +66,10 @@ export class Simulation {
     });
     this.wallEffects = new WallEffectSystem({ walls: this.walls, zombies: this.zombies, events: this.events });
     this.hazards = new HazardSystem({ zombies: this.zombies, heroes: this.heroes, events: this.events, types: c.ZOMBIES });
-    this.wanderers = c.WANDERERS ? new WandererSystem({
-      zombies: this.zombies, events: this.events, rng: this.wanderRng, cfg: c.WANDERERS, map: c.MAP,
-      getHpMultiplier: () => this.waves.hpMultiplier,
+    // The Commander's automatic abilities (skills and artifacts), when there are any.
+    this.abilities = Object.keys(c.COMMANDER_ABILITIES ?? {}).length ? new CommanderAbilitySystem({
+      powers: c.COMMANDER_ABILITIES, zombies: this.zombies, walls: this.walls, fortress: this.fortress,
+      economy: this.economy, waves: this.waves, combat: this.combat, events: this.events,
     }) : null;
 
     // Cross-system rules.
@@ -99,17 +94,7 @@ export class Simulation {
         if (whole > 0) { this.killGoldCarry -= whole; this.economy.earn(whole, 'bonus:plunder'); }
       }
       if (zombie.boss) this.stats.bossesSlain++;
-      if (zombie.wanderer) this.stats.wanderersSlain++;
-      const table = zombie.wanderer ? c.ZOMBIES[zombie.type].wanderer.loot : zombie.boss ? 'boss' : null;
-      if (table && c.LOOT_TABLES) {
-        const drop = rollLoot(table, () => this.lootRng.next(), this.bonus.artifactLuckPct);
-        if (drop) {
-          this.artifacts.push(drop);
-          ev.emit('artifactDropped', { ...drop, x: zombie.x, z: zombie.z, source: zombie.type });
-        }
-      }
     });
-    ev.on('wandererEscaped', () => { this.stats.wanderersEscaped++; });
     // Per-hero damage statistics: damage this wave, and DPS over the last finished wave.
     this.waveStartTime = 0;
     // Statistics are kept for every damage source: the champion and the towers.
@@ -149,6 +134,7 @@ export class Simulation {
     this.waves.step(dt);
     this.zombies.step(dt);
     this.combat.step(dt);
+    this.abilities?.step(dt);
     this.towers.step(dt);
     this.projectiles.step(dt);
     this.zones.step(dt);
@@ -173,9 +159,6 @@ export class Simulation {
       heroes: this.heroes.count,
       time: this.time,
       bossesSlain: this.stats.bossesSlain,
-      wanderersSlain: this.stats.wanderersSlain,
-      wanderersEscaped: this.stats.wanderersEscaped,
-      artifacts: this.artifacts.map((a) => ({ ...a })),
     };
   }
 }

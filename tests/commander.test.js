@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as CFG from '../src/config/game.js';
-import { RARITIES, PERKS, ARTIFACTS, LOOT_TABLES, COMMANDER } from '../src/config/commander.js';
+import { RARITIES, PERKS, ARTIFACTS, COMMANDER, ABILITIES } from '../src/config/commander.js';
 import {
-  commanderDefaults, rollOffer, ensureOffer, choosePerk, addXp, runXp, rollLoot, addArtifact,
-  equip, unequip, salvage, slotCount, totalBonuses, applyBonuses, perkValue,
+  commanderDefaults, rollOffer, ensureOffer, choosePerk, addXp, runXp, addArtifact, chooseArtifact,
+  equip, unequip, salvage, slotCount, totalBonuses, totalAbilities, applyBonuses, runConfig, perkValue,
+  artifactOdds, rollArtifactOffer, artifactAbility, artifactBonuses, levelFactor, isSkill,
 } from '../src/core/commander.js';
 import { sanitize, recordRun } from '../src/core/save.js';
 import { createRng } from '../src/core/rng.js';
@@ -32,29 +33,6 @@ test('rarities: common is by far the most likely, mythical the rarest', () => {
   for (let i = 0; i < 4000; i++) for (const o of rollOffer(rnd)) count[o.rarity]++;
   for (let i = 1; i < RARITIES.length; i++) assert.ok(count[RARITIES[i - 1]] > count[RARITIES[i]], JSON.stringify(count));
   assert.ok(count.mythical > 0, 'mythical perks can appear');
-});
-
-test('loot: every table favours common; better tables give more top rarities', () => {
-  const tally = (table) => {
-    const rnd = seq(3);
-    const c = Object.fromEntries(RARITIES.map((r) => [r, 0]));
-    let drops = 0;
-    for (let i = 0; i < 20000; i++) {
-      const d = rollLoot(table, rnd);
-      if (!d) continue;
-      drops++;
-      assert.ok(ARTIFACTS[d.id]);
-      c[d.rarity]++;
-    }
-    return { c, drops };
-  };
-  const minor = tally('minor'), major = tally('major'), mythic = tally('mythic'), boss = tally('boss');
-  for (const t of [minor, major, mythic, boss]) {
-    for (const r of RARITIES.slice(1)) assert.ok(t.c.common > t.c[r], `${r}: ${JSON.stringify(t.c)}`);
-  }
-  assert.equal(boss.c.legendary + boss.c.mythical, 0, 'bosses never drop the good stuff');
-  assert.ok(Math.abs(boss.drops / 20000 - LOOT_TABLES.boss.chance) < 0.02);
-  assert.ok(mythic.c.mythical > major.c.mythical && major.c.mythical > minor.c.mythical);
 });
 
 test('XP and levels: each level grants exactly one pick, offers are spent once', () => {
@@ -89,8 +67,8 @@ test('run XP grows with depth', () => {
 test('artifacts: auto-equip into free slots, slot limit, salvage gives XP', () => {
   const cmd = commanderDefaults();
   const slots = slotCount(1);
-  const uids = [];
-  for (let i = 0; i < slots + 2; i++) uids.push(addArtifact(cmd, { id: 'bloodstone', rarity: 'common' }).artifact.uid);
+  const ids = Object.keys(ARTIFACTS).slice(0, slots + 2);
+  const uids = ids.map((id) => addArtifact(cmd, { id, rarity: 'common' }).artifact.uid);
   assert.equal(cmd.equipped.length, slots);
   assert.equal(equip(cmd, uids[slots]), false, 'slots full');
   assert.ok(unequip(cmd, uids[0]));
@@ -104,22 +82,91 @@ test('artifacts: auto-equip into free slots, slot limit, salvage gives XP', () =
   assert.ok(slotCount(20) > slotCount(1));
 });
 
-test('bonuses: perks and equipped artifacts add up; unequipped ones do not count', () => {
+test('artifacts: identical ones merge into higher levels; other rarities stay separate', () => {
   const cmd = commanderDefaults();
-  cmd.perks.push({ id: 'sharpSteel', rarity: 'rare' }, { id: 'sharpSteel', rarity: 'common' });
+  const first = addArtifact(cmd, { id: 'mortar', rarity: 'rare' });
+  assert.equal(first.artifact.level, 1);
+  const second = addArtifact(cmd, { id: 'mortar', rarity: 'rare' });
+  assert.ok(second.merged);
+  assert.equal(second.artifact.uid, first.artifact.uid);
+  assert.equal(first.artifact.level, 2);
+  assert.equal(addArtifact(cmd, { id: 'mortar', rarity: 'uncommon' }).merged, false, 'a different rarity is a different artifact');
+  for (let i = 0; i < 10; i++) addArtifact(cmd, { id: 'mortar', rarity: 'rare' });
+  const rares = cmd.artifacts.filter((a) => a.id === 'mortar' && a.rarity === 'rare');
+  assert.equal(rares[0].level, COMMANDER.artifactMaxLevel, 'capped at max level');
+  assert.ok(rares.length > 1, 'past max level a new copy starts');
+  // Levels make it stronger: bonuses and ability power.
+  const b1 = artifactBonuses('mortar', 'rare', 1).wallHpPct, b3 = artifactBonuses('mortar', 'rare', 3).wallHpPct;
+  assert.ok(Math.abs(b3 - b1 * levelFactor(3)) < 0.02);
+  assert.ok(artifactAbility('mortar', 'rare', 3).power > artifactAbility('mortar', 'rare', 1).power);
+});
+
+test('artifacts: commons carry no ability, uncommon and better do, stronger by rarity', () => {
+  for (const id of Object.keys(ARTIFACTS)) {
+    assert.equal(artifactAbility(id, 'common'), null);
+    let prev = 0;
+    for (const r of RARITIES.slice(1)) {
+      const ab = artifactAbility(id, r);
+      assert.ok(ab && ABILITIES[ab.id], `${id} ${r}`);
+      assert.ok(ab.power > prev);
+      prev = ab.power;
+    }
+  }
+});
+
+test('run-end artifacts: three distinct choices; odds improve the further the run got', () => {
+  const rnd = seq(17);
+  for (let i = 0; i < 200; i++) {
+    const offer = rollArtifactOffer(3, rnd);
+    assert.equal(offer.length, 3);
+    assert.equal(new Set(offer.map((o) => o.id)).size, 3);
+  }
+  const share = (wave) => {
+    const r = seq(wave + 1);
+    let good = 0, n = 0;
+    for (let i = 0; i < 3000; i++) for (const o of rollArtifactOffer(wave, r)) { n++; if (['rare', 'legendary', 'mythical'].includes(o.rarity)) good++; }
+    return good / n;
+  };
+  const early = share(3), mid = share(12), deep = share(30);
+  assert.ok(early < 0.12, `early runs mostly give poor artifacts (${early})`);
+  assert.ok(mid > early * 1.8 && deep > mid * 1.4, `${early} ${mid} ${deep}`);
+  const o1 = artifactOdds(1);
+  assert.ok(o1.common > o1.uncommon + o1.rare + o1.legendary + o1.mythical, 'a short run is mostly commons');
+  assert.ok(artifactOdds(30).mythical > o1.mythical * 10);
+  // Choosing takes one and clears the offer.
+  const cmd = commanderDefaults();
+  cmd.artifactOffer = [{ id: 'bloodstone', rarity: 'rare' }, { id: 'mortar', rarity: 'common' }, { id: 'ledger', rarity: 'uncommon' }];
+  const res = chooseArtifact(cmd, 0);
+  assert.equal(res.artifact.id, 'bloodstone');
+  assert.equal(cmd.artifactOffer, null);
+  assert.equal(chooseArtifact(cmd, 0), null, 'only once');
+});
+
+test('bonuses and abilities: perks, skills and equipped artifacts add up; unequipped do not count', () => {
+  const cmd = commanderDefaults();
+  cmd.perks.push({ id: 'sharpSteel', rarity: 'rare' }, { id: 'sharpSteel', rarity: 'common' }, { id: 'skillMeteor', rarity: 'uncommon' });
   const a = addArtifact(cmd, { id: 'kingslayer', rarity: 'legendary' }).artifact;
+  addArtifact(cmd, { id: 'falconHood', rarity: 'rare' });
   let b = totalBonuses(cmd);
-  assert.equal(b.heroDamagePct, 11 + 4 + 14);
-  assert.equal(b.heroCritAdd, 6);
+  assert.equal(b.heroDamagePct, 22 + 8 + 28);
+  assert.equal(b.heroCritAdd, 12);
+  let ab = totalAbilities(cmd);
+  assert.equal(ab.judgement, 2.2);
+  assert.equal(ab.meteor, 1 + 1.5, 'skill and artifact with the same ability stack');
+  assert.ok(isSkill('skillMeteor') && !isSkill('sharpSteel'));
   unequip(cmd, a.uid);
   b = totalBonuses(cmd);
-  assert.equal(b.heroDamagePct, 15);
+  ab = totalAbilities(cmd);
+  assert.equal(b.heroDamagePct, 30);
   assert.equal(b.heroCritAdd, undefined);
+  assert.equal(ab.judgement, undefined);
+  assert.deepEqual(runConfig(CFG, cmd).COMMANDER_ABILITIES, ab);
 });
 
 test('applyBonuses changes a copy and never the shared config', () => {
   const before = JSON.stringify(CFG.HEROES) + JSON.stringify(CFG.WALLS) + CFG.ECONOMY.startingGold;
-  const c = applyBonuses(CFG, { heroDamagePct: 50, wallCostPct: 500, startingGoldAdd: 100, enemyHpPct: 10, killGoldPct: 20 });
+  const c = applyBonuses(CFG, { heroDamagePct: 50, wallCostPct: 500, startingGoldAdd: 100, enemyHpPct: 10, killGoldPct: 20 }, { meteor: 2 });
+  assert.deepEqual(c.COMMANDER_ABILITIES, { meteor: 2 });
   assert.equal(JSON.stringify(CFG.HEROES) + JSON.stringify(CFG.WALLS) + CFG.ECONOMY.startingGold, before);
   assert.equal(c.HEROES.archer.damage, CFG.HEROES.archer.damage * 1.5);
   assert.equal(c.WALLS.stone.cost, Math.round(CFG.WALLS.stone.cost * (1 - COMMANDER.maxReductionPct / 100)), 'reductions are capped');
@@ -149,8 +196,8 @@ test('save: version 1 saves are upgraded, garbage commander data is cleaned', ()
     commander: {
       level: 3, xp: 1e9, pendingPicks: 2, offer: [{ id: 'hacked', rarity: 'mythical' }],
       perks: [{ id: 'sharpSteel', rarity: 'rare' }, { id: 'hallowedGround', rarity: 'common' }, { id: 'x' }],
-      artifacts: [{ uid: 4, id: 'mortar', rarity: 'epic' }, { uid: 5, id: 'mortar', rarity: 'rare' }, { uid: 5, id: 'ledger', rarity: 'rare' }],
-      equipped: [5, 5, 99], nextUid: 1,
+      artifacts: [{ uid: 4, id: 'mortar', rarity: 'epic' }, { uid: 5, id: 'mortar', rarity: 'rare', level: 99 }, { uid: 5, id: 'ledger', rarity: 'rare' }],
+      equipped: [5, 5, 99], nextUid: 1, artifactOffer: [{ id: 'mortar', rarity: 'rare' }, { id: 'hacked', rarity: 'rare' }],
     },
   });
   const c = messy.commander;
@@ -158,75 +205,16 @@ test('save: version 1 saves are upgraded, garbage commander data is cleaned', ()
   assert.ok(c.xp < COMMANDER.xpToNext(3));
   assert.equal(c.offer, null, 'invalid offers are dropped (a fresh one is rolled later)');
   assert.deepEqual(c.perks, [{ id: 'sharpSteel', rarity: 'rare' }], 'unknown perks and impossible rarities are dropped');
-  assert.deepEqual(c.artifacts, [{ uid: 5, id: 'mortar', rarity: 'rare' }]);
+  assert.deepEqual(c.artifacts, [{ uid: 5, id: 'mortar', rarity: 'rare', level: COMMANDER.artifactMaxLevel }]);
+  assert.equal(c.artifactOffer, null, 'an offer with an unknown artifact is dropped');
+  const keep = sanitize({ ...v1, version: 2, commander: { artifactOffer: [{ id: 'mortar', rarity: 'rare' }] } });
+  assert.deepEqual(keep.commander.artifactOffer, [{ id: 'mortar', rarity: 'rare' }], 'a pending choice survives a reload');
   assert.deepEqual(c.equipped, [5]);
   assert.equal(c.nextUid, 6);
   assert.deepEqual(sanitize('garbage').commander, commanderDefaults());
   // recordRun keeps the commander.
   messy.commander.level = 4;
   assert.equal(recordRun(messy, { wave: 1, score: 0, kills: 0 }).save.commander.level, 4);
-});
-
-test('wanderer crosses west to east through walls, never attacks, and leaves without reward', () => {
-  const sim = new Simulation({ seed: 3 });
-  // Walls across every row a wanderer can use: it must walk straight through them.
-  sim.economy.earn(50000);
-  for (let y = sim.config.WANDERERS.minRow - 1; y <= sim.config.WANDERERS.maxRow + 2; y += 2) {
-    for (let x = 0; x < sim.config.MAP.width; x++) sim.walls.build('stone', x, y);
-  }
-  const gold = sim.economy.gold;
-  const gate = sim.fortress.hp;
-  const wallHp = [...sim.walls.all()].reduce((s, w) => s + w.hp, 0);
-  const escaped = [];
-  sim.events.on('wandererEscaped', (e) => escaped.push(e));
-  const z = sim.wanderers.spawn(3, 'wraith');
-  assert.ok(z.wanderer);
-  assert.equal(sim.zombies.hordeAlive, 0, 'wanderers are not part of the wave');
-  let maxDrift = 0;
-  for (let t = 0; t < 80 && z.alive; t += 1 / 30) {
-    sim.zombies.step(1 / 30);
-    maxDrift = Math.max(maxDrift, Math.abs(z.z - z.row));
-  }
-  assert.equal(escaped.length, 1);
-  assert.ok(!z.alive && z.escaped);
-  assert.ok(!sim.zombies.list.includes(z), 'removed from the field at once');
-  assert.ok(maxDrift < 1.5);
-  assert.equal(sim.economy.gold, gold, 'no reward for an escape');
-  assert.equal(sim.fortress.hp, gate);
-  assert.equal([...sim.walls.all()].reduce((s, w) => s + w.hp, 0), wallHp, 'walls untouched');
-  assert.equal(sim.stats.wanderersEscaped, 1);
-});
-
-test('slaying a wanderer drops exactly one artifact; a wanderer never holds up the wave', () => {
-  const sim = new Simulation({ seed: 9 });
-  const drops = [];
-  sim.events.on('artifactDropped', (d) => drops.push(d));
-  const z = sim.wanderers.spawn(3, 'colossus');
-  sim.zombies.damage(z, 1e9);
-  sim.zombies.damage(z, 1e9);
-  assert.equal(drops.length, 1);
-  assert.ok(ARTIFACTS[drops[0].id] && RARITIES.includes(drops[0].rarity));
-  assert.deepEqual(sim.summary().artifacts, [{ id: drops[0].id, rarity: drops[0].rarity }]);
-  assert.equal(sim.stats.wanderersSlain, 1);
-
-  // A live wanderer during an active wave: the wave still clears when the horde is dead.
-  sim.waves.startNext();
-  const w = sim.wanderers.spawn(1, 'eclipse');
-  for (let i = 0; i < 4000 && sim.waves.queue.length; i++) sim.waves.step(0.1);
-  for (const zb of sim.zombies.list) if (!zb.wanderer) sim.zombies.damage(zb, 1e9);
-  sim.waves.step(0.1);
-  assert.equal(sim.waves.phase, 'prep');
-  assert.ok(w.alive);
-});
-
-test('wanderer sightings use their own random stream: the horde is unchanged', () => {
-  const run = (wanderers) => {
-    const sim = new Simulation({ seed: 21, config: { ...CFG, WANDERERS: wanderers ? { ...CFG.WANDERERS, chance: 1, fromWave: 1 } : null } });
-    sim.waves.startNext();
-    sim.run(40);
-    return sim.zombies.list.filter((z) => !z.wanderer).map((z) => `${z.type}:${z.x.toFixed(3)}`).join(',');
-  };
-  assert.equal(run(true), run(false));
 });
 
 test('plunder bonus pays extra kill gold fractionally', () => {
@@ -283,7 +271,7 @@ test('wave variants in a run: preview matches the wave that starts, swarm kills 
     assert.equal(sim.waves.queue.length, pv.groups.reduce((s, g) => s + g.count, 0) + (pv.boss ? 1 : 0));
     if (pv.variant === 'swarm') {
       for (let i = 0; i < 40 && sim.waves.queue.length; i++) sim.waves.step(0.2);
-      const z = sim.zombies.list.find((q) => q.type === 'walker');
+      const z = sim.zombies.list.find((q) => q.alive && !q.elite && q.type === 'walker'); // corpses linger; elites pay more
       assert.ok(z.reward < CFG.ZOMBIES.walker.reward);
       checked++;
     }
@@ -306,4 +294,69 @@ test('champion: high level cap and wave-clear XP that never skips past levels', 
   sim.heroes.awardWaveXp();
   assert.equal(h.level, 2, 'two cleared waves without kills = one level');
   for (let l = 1; l < 60; l++) assert.ok(CFG.HERO_RULES.xpToNext(l + 1) > CFG.HERO_RULES.xpToNext(l));
+});
+
+
+// --- commander abilities in a run ---
+const abilityRun = (abilities, seed = 31) => {
+  const sim = new Simulation({ seed, config: applyBonuses(CFG, {}, abilities) });
+  sim.waves.startNext();
+  return sim;
+};
+
+test('no commander abilities: no ability system at all', () => {
+  assert.equal(new Simulation({ seed: 1 }).abilities, null);
+});
+
+test('meteor hits the densest pack; judgement smites the toughest enemy', () => {
+  const sim = abilityRun({ meteor: 1, judgement: 1 });
+  sim.waves.queue.length = 0;
+  const pack = [];
+  for (let i = 0; i < 6; i++) pack.push(sim.zombies.spawn('walker', 6.5 + (i % 2) * 0.3, 8.5 + i * 0.1, 50));
+  const lone = sim.zombies.spawn('walker', 20.5, 8.5, 50);
+  const big = sim.zombies.spawn('brute', 25.5, 5.5, 200);
+  const used = [];
+  sim.events.on('commanderAbility', (e) => used.push(e.id));
+  for (let t = 0; t < 10; t += 1 / 30) sim.abilities.step(1 / 30);
+  assert.ok(used.includes('meteor') && used.includes('judgement'));
+  assert.ok(pack.every((z) => z.hp < z.maxHp), 'the whole pack was hit');
+  assert.equal(lone.hp, lone.maxHp, 'the lone walker was not');
+  assert.ok(big.hp < big.maxHp, 'the toughest enemy was smitten');
+});
+
+test('frost slows everyone, masonry repairs walls, bulwark heals the gate, tithe pays on clear', () => {
+  const sim = abilityRun({ frost: 1, masonry: 1, bulwark: 1, tithe: 1 });
+  sim.waves.queue.length = 0;
+  const zs = [sim.zombies.spawn('walker', 3.5, 4.5), sim.zombies.spawn('runner', 25.5, 10.5)];
+  const w = sim.walls.build('stone', 10, 12);
+  w.hp = w.maxHp / 2;
+  sim.fortress.hp = sim.fortress.maxHp / 2;
+  for (let t = 0; t < 12; t += 1 / 30) sim.abilities.step(1 / 30);
+  assert.ok(zs.every((z) => z.slowUntil > sim.zombies.time), 'everyone slowed');
+  assert.ok(w.hp > w.maxHp / 2);
+  assert.ok(sim.fortress.hp > sim.fortress.maxHp / 2);
+  const gold = sim.economy.gold;
+  for (const z of sim.zombies.list) sim.zombies.damage(z, 1e9);
+  sim.waves.step(0.1);
+  assert.equal(sim.waves.phase, 'prep');
+  assert.ok(sim.economy.gold - gold >= ABILITIES.tithe.goldPerWave, 'tithe paid');
+});
+
+test('abilities rest between waves and scale with power', () => {
+  const sim = abilityRun({ judgement: 1 });
+  sim.waves.queue.length = 0;
+  for (const z of sim.zombies.list) sim.zombies.damage(z, 1e9);
+  sim.waves.step(0.1);
+  assert.equal(sim.waves.phase, 'prep');
+  const z = sim.zombies.spawn('brute', 10.5, 8.5, 10);
+  for (let t = 0; t < 20; t += 1 / 30) sim.abilities.step(1 / 30);
+  assert.equal(z.hp, z.maxHp, 'nothing fires during preparation');
+  const hit = (power) => {
+    const s = abilityRun({ judgement: power }, 40);
+    s.waves.queue.length = 0;
+    const b = s.zombies.spawn('brute', 10.5, 8.5, 100);
+    for (let t = 0; t < ABILITIES.judgement.interval; t += 1 / 30) s.abilities.step(1 / 30);
+    return b.maxHp - b.hp;
+  };
+  assert.ok(hit(3) > hit(1) * 2.5);
 });
