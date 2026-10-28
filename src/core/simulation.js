@@ -123,7 +123,9 @@ export class Simulation {
       const u = unit(sourceHeroId);
       if (u) { u.waveDamage += amount; u.totalDamage += amount; }
     });
-    ev.on('waveStarted', () => {
+    ev.on('waveStarted', ({ early }) => {
+      // Called-early waves join the fight in progress, so its statistics keep running.
+      if (early) return;
       this.waveStartTime = this.time;
       for (const u of [...this.heroes.all(), ...this.towers.all()]) u.waveDamage = 0;
     });
@@ -169,7 +171,8 @@ export class Simulation {
 
   summary() {
     return {
-      wave: this.waves.wave,
+      // Waves called early and not cleared do not count (see WaveSystem.creditedWave).
+      wave: this.waves.creditedWave,
       wavesCleared: this.stats.wavesCleared,
       score: this.stats.score,
       kills: this.stats.kills,

@@ -140,11 +140,10 @@ test('recruit/dismiss cannot generate gold', () => {
   assert.equal(sim.heroes.recruit('archer'), null, 'cannot recruit without gold');
 });
 
-test('waves: early start never duplicates; clearing pays a bonus and returns to prep', () => {
+test('waves: clearing pays a bonus and returns to prep', () => {
   const sim = new Simulation({ seed: 10 });
   assert.equal(sim.waves.phase, PHASE.PREP);
   assert.ok(sim.waves.startNext());
-  assert.equal(sim.waves.startNext(), false, 'second start ignored while active');
   const expected = waveComposition(1, WAVE_TABLE, ELITE).groups.reduce((a, g) => a + g.count, 0);
   assert.equal(sim.waves.remaining, expected);
   let spawned = 0;
@@ -157,6 +156,32 @@ test('waves: early start never duplicates; clearing pays a bonus and returns to 
   assert.equal(sim.waves.phase, PHASE.PREP);
   assert.equal(sim.waves.wave, 1);
   assert.equal(sim.economy.gold, gold + expected * ZOMBIES.walker.reward + WAVES.clearBonusBase + WAVES.clearBonusPerWave);
+});
+
+test('waves: calling waves early stacks them; they count only once cleared', () => {
+  const sim = new Simulation({ seed: 10 });
+  const size = (n) => waveComposition(n, WAVE_TABLE, ELITE).groups.reduce((a, g) => a + g.count, 0);
+  sim.waves.startNext();
+  assert.equal(sim.waves.creditedWave, 1);
+  sim.run(1);
+  const waiting = sim.waves.remaining;
+  assert.ok(sim.waves.startNext(), 'next wave called during a fight');
+  assert.ok(sim.waves.startNext());
+  assert.equal(sim.waves.wave, 3);
+  assert.equal(sim.waves.remaining, waiting + size(2) + size(3), 'called waves join the queue');
+  assert.equal(sim.waves.creditedWave, 1, 'called waves are not reached yet');
+  assert.equal(sim.summary().wave, 1, 'dying now scores wave 1');
+  // Clear all three: each pays its own bonus and the record moves to wave 3.
+  const cleared = [];
+  sim.events.on('waveCleared', ({ wave }) => cleared.push(wave));
+  sim.events.on('zombieSpawned', (z) => sim.zombies.damage(z, 1e9));
+  for (const z of sim.zombies.list) if (z.alive) sim.zombies.damage(z, 1e9);
+  for (let t = 0; t < 120 && sim.waves.phase !== PHASE.PREP; t += 0.5) sim.run(0.5);
+  assert.deepEqual(cleared, [1, 2, 3]);
+  assert.equal(sim.waves.phase, PHASE.PREP);
+  assert.equal(sim.waves.creditedWave, 3);
+  assert.equal(sim.summary().wave, 3);
+  assert.equal(sim.stats.wavesCleared, 3);
 });
 
 test('undefended fortress falls and the game ends exactly once', () => {

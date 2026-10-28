@@ -436,9 +436,13 @@ export class Hud {
     this.vWave.textContent = w.phase === PHASE.ACTIVE ? w.wave : `${w.nextWave}`;
     this.vEnemies.textContent = w.phase === PHASE.ACTIVE ? w.remaining : '—';
     const prep = w.phase === PHASE.PREP;
-    const label = prep ? `Start wave ${w.nextWave} <span class="k">${fmtTime(Math.max(0, w.countdown))}</span>` : `Wave ${w.wave} in progress`;
+    // Before the first wave the button starts the game; afterwards it calls the next wave,
+    // also in the middle of a fight (called waves only count once they are cleared).
+    const timer = prep ? ` <span class="k">${fmtTime(Math.max(0, w.countdown))}</span>` : '';
+    const label = w.wave === 0 ? `Start wave 1${timer}` : `Next wave ${w.nextWave}${timer}`;
     if (this.waveBtn.innerHTML !== label) this.waveBtn.innerHTML = label;
-    this.waveBtn.disabled = !prep;
+    this.waveBtn.title = w.wave === 0 ? 'Start the first wave (Enter)'
+      : 'Call the next wave now (Enter). Called waves only count toward your record once they are cleared.';
     const f = sim.fortress;
     const r = f.hp / f.maxHp;
     this.vGateBar.style.width = `${(r * 100).toFixed(1)}%`;

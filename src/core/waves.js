@@ -1,5 +1,9 @@
 // Endless waves: a preparation phase with a countdown, then an active phase that spawns
 // the wave's enemies over time. The wave ends when everything has spawned and died.
+// The next wave can also be called early, during an active wave: its enemies join the
+// queue and all called waves clear together. A called wave only counts as reached once it
+// is cleared (`creditedWave`), so calling a hundred waves and dying scores the wave the
+// player was actually fighting.
 export const PHASE = { PREP: 'prep', ACTIVE: 'active' };
 
 /**
@@ -54,6 +58,8 @@ export class WaveSystem {
   constructor({ zombies, economy, events, rng, cfg, table, elite, map, variants = null }) {
     Object.assign(this, { zombies, economy, events, rng, cfg, table, elite, map, variants });
     this.wave = 0; // last started wave
+    /** Highest wave that counts for records: started normally, or called early and cleared. */
+    this.creditedWave = 0;
     this.phase = PHASE.PREP;
     this.countdown = cfg.firstPrepTime;
     this.queue = []; // {type, elite} still to spawn this wave
@@ -86,32 +92,43 @@ export class WaveSystem {
     return this.queue.length + this.zombies.aliveCount;
   }
 
-  /** Starts the next wave now. Only valid during preparation, so it can never double up. */
+  /**
+   * Starts the next wave now. During preparation it starts normally; during an active wave
+   * it is called early and its enemies are added to the ones still to come.
+   */
   startNext() {
-    if (this.phase !== PHASE.PREP) return false;
+    const early = this.phase === PHASE.ACTIVE;
     const comp = this.preview(this.nextWave);
     this.wave++;
+    if (!early) this.creditedWave = this.wave;
     this.variant = comp.variant;
     this.hpMultiplier = comp.hpMultiplier;
     this.spawnIntervalMult = comp.spawnIntervalMult;
     this.rewardMult = comp.rewardMult;
     this.zombies.damageMultiplier = comp.damageMultiplier;
-    this.queue = [];
+    // Each enemy keeps its own wave's health and bounty, even when waves overlap.
+    // Bosses keep their full bounty whatever the wave variant.
+    const bossHp = comp.hpMultiplier / (this.variants?.types[comp.variant]?.hpMult ?? 1);
+    const queue = [];
     for (const g of comp.groups) {
-      for (let i = 0; i < g.count; i++) this.queue.push({ type: g.type, elite: this.rng.next() < comp.eliteChance });
+      for (let i = 0; i < g.count; i++) {
+        queue.push({ type: g.type, elite: this.rng.next() < comp.eliteChance, hp: comp.hpMultiplier, rewardMult: comp.rewardMult });
+      }
     }
     // Shuffle so mixed groups interleave.
-    for (let i = this.queue.length - 1; i > 0; i--) {
+    for (let i = queue.length - 1; i > 0; i--) {
       const j = Math.floor(this.rng.next() * (i + 1));
-      [this.queue[i], this.queue[j]] = [this.queue[j], this.queue[i]];
+      [queue[i], queue[j]] = [queue[j], queue[i]];
     }
     // The boss arrives two thirds of the way through the wave.
-    if (comp.boss) this.queue.splice(Math.floor(this.queue.length / 3), 0, { type: comp.boss, elite: false });
-    this.spawnTimer = 0;
+    if (comp.boss) queue.splice(Math.floor(queue.length / 3), 0, { type: comp.boss, elite: false, hp: bossHp, rewardMult: 1 });
+    // The queue spawns from its end: a called wave goes behind what is still waiting.
+    this.queue = early ? [...queue, ...this.queue] : queue;
+    if (!early) this.spawnTimer = 0;
     this.sinceLastSpawn = 0;
     this.enraged = false;
     this.phase = PHASE.ACTIVE;
-    this.events.emit('waveStarted', { wave: this.wave, count: this.queue.length, boss: comp.boss, variant: this.variant });
+    this.events.emit('waveStarted', { wave: this.wave, count: queue.length, boss: comp.boss, variant: this.variant, early });
     return true;
   }
 
@@ -132,13 +149,11 @@ export class WaveSystem {
       this.spawnTimer -= dt;
       while (this.spawnTimer <= 0 && this.queue.length) {
         this.spawnTimer += this.spawnInterval;
-        const { type, elite } = this.queue.pop();
+        const { type, elite, hp, rewardMult } = this.queue.pop();
         const boss = this.zombies.types[type].boss;
         const x = boss ? this.map.width / 2 + this.rng.range(-4, 4) : this.rng.range(0.5, this.map.width - 0.5);
         const z = this.rng.range(0.3, this.map.spawnRows - 0.3);
-        // Bosses keep their full bounty whatever the wave variant.
-        const hp = boss ? this.hpMultiplier / (this.variants?.types[this.variant]?.hpMult ?? 1) : this.hpMultiplier;
-        this.zombies.spawn(type, x, z, hp, { elite, rewardMult: boss ? 1 : this.rewardMult });
+        this.zombies.spawn(type, x, z, hp, { elite, rewardMult });
       }
       return;
     }
@@ -156,13 +171,19 @@ export class WaveSystem {
       if (n) this.events.emit('hordeEnraged', { count: n });
     }
     if (this.zombies.aliveCount === 0) {
-      const bonus = this.cfg.clearBonusBase + this.cfg.clearBonusPerWave * this.wave;
-      this.economy.earn(bonus, `wave:${this.wave}`);
+      // Every wave fought together is cleared now (several when waves were called early);
+      // each pays its own bonus and counts as reached.
+      const first = this.cleared + 1;
       this.cleared = this.wave;
+      this.creditedWave = this.wave;
       this.nextVariant = rollVariant(this.wave + 1, this.variants, this.table, this.variant, () => this.rng.next());
       this.phase = PHASE.PREP;
       this.countdown = this.cfg.prepTime;
-      this.events.emit('waveCleared', { wave: this.wave, bonus });
+      for (let n = first; n <= this.wave; n++) {
+        const bonus = this.cfg.clearBonusBase + this.cfg.clearBonusPerWave * n;
+        this.economy.earn(bonus, `wave:${n}`);
+        this.events.emit('waveCleared', { wave: n, bonus });
+      }
     }
   }
 }
