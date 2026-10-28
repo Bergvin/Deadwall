@@ -1,23 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation } from '../src/core/simulation.js';
-import { HEROES, HERO_RULES } from '../src/config/game.js';
-import { heroStats } from '../src/core/heroStats.js';
+import { HEROES, HERO_RULES, HERO_ACTIVES, HERO_ABILITIES } from '../src/config/game.js';
 import { buildBlock } from './helpers.js';
 
 const DT = 1 / 60;
 
+/** The level-up ability that gives an active ability id. */
+export const abilityFor = (activeId) => Object.keys(HERO_ABILITIES).find((k) => HERO_ABILITIES[k].active === activeId);
+
+/** Grants the hero the actives its weapon style used to have as a class (rank 1). */
+function grantClassActives(sim, hero) {
+  for (const id of Object.keys(HEROES[hero.type].abilities ?? {})) sim.heroes.grantAbility(hero.id, abilityFor(id), 1);
+}
+
 /**
- * A sim with lots of gold, a 2x2 block of walls at (15..16, 14..15) and a champion of
- * `type` on it (standing at 16, 15). Auto-cast is off by default so tests can cast by hand.
+ * A sim with lots of gold, a 2x2 block of walls at (15..16, 14..15) and a hero wielding a
+ * `type` weapon on it (standing at 16, 15), granted that style's old class abilities.
+ * Auto-cast is off by default so tests can cast by hand.
  */
-function setup(type, { level = 1, auto = false } = {}) {
+function setup(type, { level = 1, auto = false, actives = true } = {}) {
   const sim = new Simulation({ seed: 100 });
   sim.economy.earn(100000);
   const wall = buildBlock(sim, 15, 14);
   const hero = sim.heroes.recruitChampion(type);
   sim.heroes.deploy(hero.id, wall.id);
   while (hero.level < level) sim.heroes.addXp(hero, sim.heroes.xpToNext(hero));
+  if (actives) grantClassActives(sim, hero);
   hero.autoCast = auto;
   return { sim, wall, hero };
 }
@@ -58,9 +67,10 @@ for (const type of Object.keys(HEROES)) {
   });
 }
 
-test('abilities are locked until their unlock level', () => {
-  const { sim, hero } = setup('mage');
-  assert.equal(sim.combat.canUse(hero.id, 'arcaneBlast', { x: 15.5, z: 12 }).reason, 'locked');
+test('a hero only has the active abilities it picked', () => {
+  const { sim, hero } = setup('mage', { actives: false });
+  assert.equal(sim.combat.canUse(hero.id, 'fireball', { x: 15.5, z: 12 }).reason, 'unknown_ability');
+  sim.heroes.grantAbility(hero.id, 'fireball', 1);
   assert.ok(sim.combat.canUse(hero.id, 'fireball', { x: 15.5, z: 12 }).ok);
 });
 
@@ -69,6 +79,7 @@ test('abilities: out of range and undeployed heroes are rejected', () => {
   assert.equal(sim.combat.canUse(hero.id, 'fireball', { x: 15.5, z: 0.5 }).reason, 'out_of_range');
   const other = new Simulation({ seed: 101 });
   const reserve = other.heroes.recruitChampion('mage');
+  other.heroes.grantAbility(reserve.id, 'frostNova', 1);
   assert.equal(other.combat.canUse(reserve.id, 'frostNova').reason, 'not_deployed');
   assert.ok(sim.heroes.get(hero.id));
 });
@@ -97,7 +108,7 @@ test('fireball burns an area; frost nova slows; arcane blast hits hard', () => {
   assert.ok(near.slowUntil > sim.zombies.time && near.slowFactor < 1);
   const big = dummy(sim, 15.5, 10.5, 5000);
   sim.combat.use(hero.id, 'arcaneBlast', { x: 15.5, z: 10.5 });
-  assert.ok(5000 - big.hp >= HEROES.mage.abilities.arcaneBlast.damage * 0.99);
+  assert.ok(5000 - big.hp >= HERO_ACTIVES.arcaneBlast.damage * 0.99);
 });
 
 test('shield bash stuns; stunned zombies do not move or attack', () => {
@@ -105,8 +116,9 @@ test('shield bash stuns; stunned zombies do not move or attack', () => {
   const z = sim.zombies.spawn('walker', 15.5, 13.3);
   sim.combat.use(hero.id, 'shieldBash');
   assert.ok(z.stunUntil > sim.zombies.time);
+  sim.run(0.5); // the bash also shoves it back; let it land and stop sliding
   const pos = [z.x, z.z];
-  sim.run(1);
+  sim.run(0.5);
   assert.deepEqual([z.x, z.z], pos);
 });
 
@@ -150,7 +162,7 @@ test('crossbow armor-piercing bolt ignores armor', () => {
   z.armor = 0.6;
   sim.combat.use(hero.id, 'apBolt', { zombieId: z.id });
   sim.run(0.6);
-  const expected = hero.stats.damage * HEROES.crossbowman.abilities.apBolt.damageMult;
+  const expected = hero.stats.damage * HERO_ACTIVES.apBolt.damageMult;
   assert.ok(5000 - z.hp >= expected * 0.99, `${5000 - z.hp} >= ${expected}`);
 });
 
@@ -187,33 +199,6 @@ test('levelling raises class stats and restores health', () => {
   assert.ok(h.stats.maxHp > before.maxHp && h.stats.damage > before.damage);
   sim.heroes.addXp(h, 1e9);
   assert.equal(h.level, HERO_RULES.maxLevel, 'capped');
-});
-
-test('talents: need level and gold, exclude the other option, change behaviour', () => {
-  const sim = new Simulation({ seed: 5 });
-  sim.economy.earn(5000);
-  const h = sim.heroes.recruit('archer');
-  assert.equal(sim.heroes.canBuyTalent(h.id, 0, 'rapidDraw').reason, 'level_too_low');
-  while (h.level < 3) sim.heroes.addXp(h, sim.heroes.xpToNext(h));
-  const projected = heroStats(HEROES.archer, h.level, [...h.talents, 'rapidDraw']);
-  assert.ok(sim.heroes.buyTalent(h.id, 0, 'rapidDraw'));
-  assert.equal(h.stats.attackInterval, projected.attackInterval);
-  assert.equal(sim.heroes.canBuyTalent(h.id, 0, 'piercingShafts').reason, 'tier_taken');
-  const g = sim.economy.gold;
-  sim.economy.trySpend(g);
-  while (h.level < 5) sim.heroes.addXp(h, sim.heroes.xpToNext(h));
-  assert.equal(sim.heroes.canBuyTalent(h.id, 1, 'volley').reason, 'insufficient_gold');
-});
-
-test('dismissing an upgraded hero never returns more than was spent', () => {
-  const sim = new Simulation({ seed: 6 });
-  sim.economy.earn(1000);
-  const start = sim.economy.gold;
-  const h = sim.heroes.recruit('archer');
-  while (h.level < 3) sim.heroes.addXp(h, sim.heroes.xpToNext(h));
-  sim.heroes.buyTalent(h.id, 0, 'rapidDraw');
-  sim.heroes.dismiss(h.id);
-  assert.ok(sim.economy.gold < start);
 });
 
 test('targeting preference: strongest picks the healthiest zombie', () => {

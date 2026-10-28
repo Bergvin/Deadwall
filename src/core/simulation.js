@@ -17,6 +17,7 @@ import { TowerSystem } from './towers.js';
 import { WaveSystem, PHASE } from './waves.js';
 import { CommanderAbilitySystem } from './commanderAbilities.js';
 import { createRng } from './rng.js';
+import { rollItem } from './heroBuild.js';
 
 export class Simulation {
   /** @param {{seed?:number, config?:object}} opts */
@@ -33,6 +34,9 @@ export class Simulation {
       bossesSlain: 0,
     };
     this.bonus = { killGoldPct: 0, ...(c.BONUS ?? {}) };
+    // Loot rolls use their own random stream so drops never shift the horde's rolls.
+    this.lootRng = createRng((seed ^ 0x10075) >>> 0);
+    this.stats.itemsFound = 0;
     this.killGoldCarry = 0;
 
     this.grid = createMapGrid(c.MAP);
@@ -41,12 +45,12 @@ export class Simulation {
     this.fortress = new Fortress({ x: c.MAP.gateX, y: c.MAP.castleWallRow }, c.FORTRESS, this.events, this.economy);
     this.zombies = new ZombieSystem({
       grid: this.grid, walls: this.walls, fortress: this.fortress, economy: this.economy,
-      events: this.events, rng: this.rng, types: c.ZOMBIES, pathing: c.PATHING, elite: c.ELITE,
+      events: this.events, rng: this.rng, types: c.ZOMBIES, pathing: c.PATHING, elite: c.ELITE, physics: c.PHYSICS,
     });
     this.heroes = new HeroSystem({
       walls: this.walls, zombies: this.zombies, economy: this.economy,
       events: this.events, rng: this.rng, types: c.HEROES, rules: c.HERO_RULES, economyConfig: c.ECONOMY,
-      champion: c.CHAMPION,
+      champion: c.CHAMPION, cfg: c,
     });
     this.zones = new ZoneSystem({ zombies: this.zombies, events: this.events });
     this.projectiles = new ProjectileSystem({
@@ -55,6 +59,7 @@ export class Simulation {
     this.combat = new CombatSystem({
       heroes: this.heroes, zombies: this.zombies, walls: this.walls, projectiles: this.projectiles,
       zones: this.zones, events: this.events, rng: this.rng, types: c.HEROES, rules: c.HERO_RULES,
+      economy: this.economy, cfg: c, gate: this.fortress.gate,
     });
     this.waves = new WaveSystem({
       zombies: this.zombies, economy: this.economy, events: this.events, rng: this.rng,
@@ -77,6 +82,7 @@ export class Simulation {
     this.fortress.priceMultiplier = this.walls.priceMultiplier;
     this.towers.priceMultiplier = this.walls.priceMultiplier;
     this.heroes.reviveAllowed = () => this.waves.phase === PHASE.PREP;
+    this.heroes.buildAllowed = () => this.waves.phase === PHASE.PREP;
     this.walls.damageModifier = (w) => this.combat.wallDamageMultiplier(w);
     this.walls.placementBlocker = (x, y) => (this.zombies.cellCount[this.grid.index(x, y)] ? 'enemy_present' : null);
 
@@ -94,6 +100,20 @@ export class Simulation {
         if (whole > 0) { this.killGoldCarry -= whole; this.economy.earn(whole, 'bonus:plunder'); }
       }
       if (zombie.boss) this.stats.bossesSlain++;
+      // Weapons and gear drop for the hero (mostly from elites and bosses).
+      if (c.LOOT && this.heroes.count) {
+        const kind = zombie.boss ? 'boss' : zombie.elite ? 'elite' : 'normal';
+        const r = () => this.lootRng.next();
+        if (r() < c.LOOT.chance[kind]) {
+          const luck = kind === 'boss' ? c.LOOT.bossLuckPct : kind === 'elite' ? c.LOOT.eliteLuckPct : 0;
+          for (let n = 0; n < (kind === 'boss' ? c.LOOT.bossDrops : 1); n++) {
+            const item = rollItem(c, this.waves.wave, r, luck);
+            const res = this.heroes.addLoot(item);
+            this.stats.itemsFound++;
+            ev.emit('lootDropped', { item, x: zombie.x, z: zombie.z, ...res });
+          }
+        }
+      }
     });
     // Per-hero damage statistics: damage this wave, and DPS over the last finished wave.
     this.waveStartTime = 0;

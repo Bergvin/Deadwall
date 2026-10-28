@@ -27,7 +27,8 @@ export function waveComposition(n, table, elite, variant = null) {
   return {
     groups,
     boss,
-    hpMultiplier: (table.hpBase ?? 1) * (1 + table.hpGrowth * (n - 1) + table.hpGrowthLate * (n - 1) ** 2) * (v.hpMult ?? 1),
+    hpMultiplier: (table.hpBase ?? 1) * (1 + table.hpGrowth * (n - 1) + table.hpGrowthLate * (n - 1) ** 2)
+      * Math.exp((table.hpGrowthExp ?? 0) * (n - 1)) * (v.hpMult ?? 1),
     damageMultiplier: (table.damageBase ?? 1) * (1 + table.damageGrowth * (n - 1)),
     eliteChance,
     spawnIntervalMult: v.spawnIntervalMult ?? 1,
@@ -107,6 +108,8 @@ export class WaveSystem {
     // The boss arrives two thirds of the way through the wave.
     if (comp.boss) this.queue.splice(Math.floor(this.queue.length / 3), 0, { type: comp.boss, elite: false });
     this.spawnTimer = 0;
+    this.sinceLastSpawn = 0;
+    this.enraged = false;
     this.phase = PHASE.ACTIVE;
     this.events.emit('waveStarted', { wave: this.wave, count: this.queue.length, boss: comp.boss, variant: this.variant });
     return true;
@@ -125,6 +128,7 @@ export class WaveSystem {
       return;
     }
     if (this.queue.length) {
+      this.sinceLastSpawn = 0;
       this.spawnTimer -= dt;
       while (this.spawnTimer <= 0 && this.queue.length) {
         this.spawnTimer += this.spawnInterval;
@@ -137,6 +141,19 @@ export class WaveSystem {
         this.zombies.spawn(type, x, z, hp, { elite, rewardMult: boss ? 1 : this.rewardMult });
       }
       return;
+    }
+    // Stragglers that survive long after the last spawn become enraged (see WAVES.enrageAfter).
+    this.sinceLastSpawn = (this.sinceLastSpawn ?? 0) + dt;
+    if (this.cfg.enrageAfter && this.sinceLastSpawn >= this.cfg.enrageAfter && !this.enraged) {
+      this.enraged = true;
+      let n = 0;
+      for (const z of this.zombies.list) {
+        if (!z.alive || z.enraged) continue;
+        z.enraged = true;
+        z.speed *= this.cfg.enrageSpeedMult ?? 1.5;
+        n++;
+      }
+      if (n) this.events.emit('hordeEnraged', { count: n });
     }
     if (this.zombies.aliveCount === 0) {
       const bonus = this.cfg.clearBonusBase + this.cfg.clearBonusPerWave * this.wave;

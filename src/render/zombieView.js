@@ -58,11 +58,11 @@ export class ZombieView {
       const i = h.count++;
       const a = h.anims;
       if (z.state === ZSTATE.DEAD) {
-        h.horde.set(i, z.x, 0, z.z, z.facing, a.death, z.deadTime, false, this.typeTint[z.type], z.scale);
+        h.horde.set(i, z.x, z.air ?? 0, z.z, z.facing, a.death, z.deadTime, false, this.typeTint[z.type], z.scale);
       } else if (z.state === ZSTATE.MOVE) {
-        h.horde.set(i, z.x, 0, z.z, z.facing, a.move, z.animTime * z.speed * WALK_ANIM_RATE, true, this.#tint(z, time), z.scale);
+        h.horde.set(i, z.x, z.air ?? 0, z.z, z.facing, a.move, z.animTime * z.speed * WALK_ANIM_RATE, true, this.#tint(z, time), z.scale);
       } else {
-        h.horde.set(i, z.x, 0, z.z, z.facing, a.attack, z.animTime, true, this.#tint(z, time), z.scale);
+        h.horde.set(i, z.x, z.air ?? 0, z.z, z.facing, a.attack, z.animTime, true, this.#tint(z, time), z.scale);
       }
     }
     for (const h of this.hordes.values()) h.horde.commit(h.count);

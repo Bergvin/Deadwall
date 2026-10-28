@@ -8,16 +8,8 @@
 //     ability; two identical artifacts (same kind and rarity) merge into a higher level.
 // core/commander.js turns all of it into a modified copy of the gameplay config.
 
-/** Rarity order matters: index 0 is the weakest. */
-export const RARITIES = ['common', 'uncommon', 'rare', 'legendary', 'mythical'];
-
-export const RARITY_INFO = {
-  common: { name: 'Common', color: '#b9b3a6', salvageXp: 10 },
-  uncommon: { name: 'Uncommon', color: '#5fd35f', salvageXp: 30 },
-  rare: { name: 'Rare', color: '#4aa3ff', salvageXp: 80 },
-  legendary: { name: 'Legendary', color: '#ff9f1a', salvageXp: 200 },
-  mythical: { name: 'Mythical', color: '#ff4fd8', salvageXp: 500 },
-};
+// Rarities (now six tiers, with epic between rare and legendary) are shared with the hero.
+export { RARITIES, RARITY_INFO } from './rarities.js';
 
 export const COMMANDER = {
   /** Commander XP needed to go from level L to L+1. */
@@ -31,7 +23,7 @@ export const COMMANDER = {
   /** Choices offered per level-up and artifacts offered per finished run. */
   offerSize: 3,
   /** Rarity weights for each level-up choice (rolled per option). */
-  offerWeights: { common: 52, uncommon: 28, rare: 13, legendary: 5.5, mythical: 1.5 },
+  offerWeights: { common: 50, uncommon: 27, rare: 13, epic: 6.5, legendary: 3, mythical: 1 },
   /** Artifact slots: base + one more at each listed commander level. */
   baseSlots: 2,
   slotLevels: [4, 8, 14, 20],
@@ -53,6 +45,7 @@ export const ARTIFACT_ODDS = {
   common: { base: 75, perWave: -2.6, min: 8 },
   uncommon: { base: 20, perWave: 0.6, max: 40 },
   rare: { base: 4, perWave: 0.9, max: 32 },
+  epic: { base: 1.8, perWave: 0.6, max: 22 },
   legendary: { base: 0.8, perWave: 0.45, max: 16 },
   mythical: { base: 0.1, perWave: 0.15, max: 6 },
 };
@@ -116,7 +109,7 @@ export const ABILITIES = {
 export const ABILITY_HP_SCALING = 0.6;
 
 /** Ability strength by rarity (artifacts and skills); common artifacts carry no ability. */
-export const ABILITY_POWER = [0, 1, 1.5, 2.2, 3.2];
+export const ABILITY_POWER = [0, 1, 1.5, 1.9, 2.4, 3.2];
 
 /**
  * Bonus keys (numbers add up across perks and artifacts; core/commander.js applies them):
@@ -154,28 +147,28 @@ export const BONUS_LABELS = {
  * (ability power). One number per rarity in RARITIES order; null = never offered at that
  * rarity. Taking the same perk or skill again stacks.
  */
-const SKILL_VALUES = [null, 1, 1.5, 2.2, 3.2];
+const SKILL_VALUES = [null, 1, 1.5, 1.9, 2.4, 3.2];
 export const PERKS = {
-  sharpSteel: { name: 'Sharpened Steel', bonus: 'heroDamagePct', values: [8, 14, 22, 32, 50] },
-  quickHands: { name: 'Quick Hands', bonus: 'heroAttackSpeedPct', values: [6, 10, 16, 24, 36] },
-  hardened: { name: 'Battle-Hardened', bonus: 'heroHpPct', values: [12, 20, 30, 44, 70] },
-  eagleEyes: { name: 'Eagle Eyes', bonus: 'heroRangeAdd', values: [0.3, 0.6, 1, 1.5, 2.4] },
-  luckyStrikes: { name: 'Lucky Strikes', bonus: 'heroCritAdd', values: [2, 4, 7, 10, 16] },
-  arcaneStudy: { name: 'Arcane Study', bonus: 'abilityCooldownPct', values: [6, 10, 16, 24, 36] },
-  mentor: { name: 'Mentor', bonus: 'heroXpPct', values: [16, 28, 44, 64, 100] },
-  engineers: { name: 'Siege Engineers', bonus: 'towerCostPct', values: [6, 10, 16, 24, 36] },
-  masonry: { name: 'Master Masonry', bonus: 'wallHpPct', values: [10, 18, 28, 40, 64] },
-  quarry: { name: 'Quarry Rights', bonus: 'wallCostPct', values: [6, 10, 16, 24, 36] },
-  ironSpikes: { name: 'Iron Spikes', bonus: 'thornsPct', values: [20, 36, 56, 80, 120] },
-  runecraft: { name: 'Runecraft', bonus: 'arcanePct', values: [16, 28, 44, 64, 100] },
-  oakenGate: { name: 'Oaken Gate', bonus: 'gateHpPct', values: [12, 20, 32, 48, 80] },
-  warChest: { name: 'War Chest', bonus: 'startingGoldAdd', values: [40, 70, 110, 160, 260] },
-  plunder: { name: 'Plunder', bonus: 'killGoldPct', values: [6, 10, 16, 24, 36] },
-  tribute: { name: 'Tribute', bonus: 'waveBonusPct', values: [16, 28, 44, 64, 100] },
-  scouts: { name: 'Scouts', bonus: 'prepTimeAdd', values: [3, 5, 8, 11, 15] },
-  fortune: { name: "Fortune's Favor", bonus: 'artifactLuckPct', values: [6, 10, 16, 24, 40] },
-  hallowedGround: { name: 'Hallowed Ground', bonus: 'enemySpeedPct', values: [null, null, null, 8, 14] },
-  witheringCurse: { name: 'Withering Curse', bonus: 'enemyHpPct', values: [null, null, null, 6, 10] },
+  sharpSteel: { name: 'Sharpened Steel', bonus: 'heroDamagePct', values: [8, 14, 22, 27, 32, 50] },
+  quickHands: { name: 'Quick Hands', bonus: 'heroAttackSpeedPct', values: [6, 10, 16, 20, 24, 36] },
+  hardened: { name: 'Battle-Hardened', bonus: 'heroHpPct', values: [12, 20, 30, 37, 44, 70] },
+  eagleEyes: { name: 'Eagle Eyes', bonus: 'heroRangeAdd', values: [0.3, 0.6, 1, 1.25, 1.5, 2.4] },
+  luckyStrikes: { name: 'Lucky Strikes', bonus: 'heroCritAdd', values: [2, 4, 7, 8, 10, 16] },
+  arcaneStudy: { name: 'Arcane Study', bonus: 'abilityCooldownPct', values: [6, 10, 16, 20, 24, 36] },
+  mentor: { name: 'Mentor', bonus: 'heroXpPct', values: [16, 28, 44, 54, 64, 100] },
+  engineers: { name: 'Siege Engineers', bonus: 'towerCostPct', values: [6, 10, 16, 20, 24, 36] },
+  masonry: { name: 'Master Masonry', bonus: 'wallHpPct', values: [10, 18, 28, 34, 40, 64] },
+  quarry: { name: 'Quarry Rights', bonus: 'wallCostPct', values: [6, 10, 16, 20, 24, 36] },
+  ironSpikes: { name: 'Iron Spikes', bonus: 'thornsPct', values: [20, 36, 56, 68, 80, 120] },
+  runecraft: { name: 'Runecraft', bonus: 'arcanePct', values: [16, 28, 44, 54, 64, 100] },
+  oakenGate: { name: 'Oaken Gate', bonus: 'gateHpPct', values: [12, 20, 32, 40, 48, 80] },
+  warChest: { name: 'War Chest', bonus: 'startingGoldAdd', values: [40, 70, 110, 135, 160, 260] },
+  plunder: { name: 'Plunder', bonus: 'killGoldPct', values: [6, 10, 16, 20, 24, 36] },
+  tribute: { name: 'Tribute', bonus: 'waveBonusPct', values: [16, 28, 44, 54, 64, 100] },
+  scouts: { name: 'Scouts', bonus: 'prepTimeAdd', values: [3, 5, 8, 10, 11, 15] },
+  fortune: { name: "Fortune's Favor", bonus: 'artifactLuckPct', values: [6, 10, 16, 20, 24, 40] },
+  hallowedGround: { name: 'Hallowed Ground', bonus: 'enemySpeedPct', values: [null, null, null, null, 8, 14] },
+  witheringCurse: { name: 'Withering Curse', bonus: 'enemyHpPct', values: [null, null, null, null, 6, 10] },
   // Skills: automatic abilities, uncommon and better.
   skillMeteor: { name: 'Meteor', ability: 'meteor', values: SKILL_VALUES },
   skillStorm: { name: 'Storm Call', ability: 'storm', values: SKILL_VALUES },
@@ -185,7 +178,7 @@ export const PERKS = {
   skillMasonry: { name: "Mason's Blessing", ability: 'masonry', values: SKILL_VALUES },
   skillBulwark: { name: 'Bulwark', ability: 'bulwark', values: SKILL_VALUES },
   skillTithe: { name: 'War Tithe', ability: 'tithe', values: SKILL_VALUES },
-  skillStillness: { name: 'Stillness', ability: 'stillness', values: [null, null, 1.5, 2.2, 3.2] },
+  skillStillness: { name: 'Stillness', ability: 'stillness', values: [null, null, 1.5, 1.9, 2.4, 3.2] },
 };
 
 /**
@@ -193,24 +186,24 @@ export const PERKS = {
  * level factor) and, from uncommon up, an automatic ability (power from ABILITY_POWER).
  */
 export const ARTIFACTS = {
-  bloodstone: { name: 'Bloodstone Amulet', icon: '◆', ability: 'judgement', bonuses: { heroDamagePct: [6, 12, 24, 40, 70] } },
-  windcaller: { name: 'Windcaller Feather', icon: '➶', ability: 'storm', bonuses: { heroAttackSpeedPct: [4, 10, 18, 30, 50] } },
-  giantsBelt: { name: "Giant's Belt", icon: '▣', ability: 'bulwark', bonuses: { heroHpPct: [10, 20, 36, 60, 100] } },
-  falconHood: { name: 'Falcon Hood', icon: '◉', ability: 'meteor', bonuses: { heroRangeAdd: [0.2, 0.5, 1, 1.5, 2.4] } },
-  mortar: { name: 'Mortar of Ages', icon: '▦', ability: 'masonry', bonuses: { wallHpPct: [8, 18, 32, 55, 90] } },
-  gateWard: { name: 'Ward of the Gate', icon: '⛨', ability: 'bulwark', bonuses: { gateHpPct: [10, 24, 44, 75, 130] } },
-  goldenIdol: { name: 'Golden Idol', icon: '♛', ability: 'tithe', bonuses: { killGoldPct: [4, 10, 20, 34, 55] } },
-  ledger: { name: "Merchant's Ledger", icon: '✉', ability: 'tithe', bonuses: { startingGoldAdd: [30, 70, 140, 240, 420] } },
-  hourglass: { name: 'Cracked Hourglass', icon: '⧗', ability: 'stillness', bonuses: { abilityCooldownPct: [4, 10, 18, 28, 45] } },
-  thornCrown: { name: 'Crown of Thorns', icon: '♆', ability: 'rot', bonuses: { thornsPct: [16, 36, 64, 110, 200] } },
-  runestone: { name: 'Humming Runestone', icon: '✦', ability: 'frost', bonuses: { arcanePct: [12, 28, 52, 90, 160] } },
-  compass: { name: "Hunter's Compass", icon: '✧', ability: 'meteor', bonuses: { artifactLuckPct: [5, 10, 18, 30, 50] } },
+  bloodstone: { name: 'Bloodstone Amulet', icon: '◆', ability: 'judgement', bonuses: { heroDamagePct: [6, 12, 24, 32, 40, 70] } },
+  windcaller: { name: 'Windcaller Feather', icon: '➶', ability: 'storm', bonuses: { heroAttackSpeedPct: [4, 10, 18, 24, 30, 50] } },
+  giantsBelt: { name: "Giant's Belt", icon: '▣', ability: 'bulwark', bonuses: { heroHpPct: [10, 20, 36, 48, 60, 100] } },
+  falconHood: { name: 'Falcon Hood', icon: '◉', ability: 'meteor', bonuses: { heroRangeAdd: [0.2, 0.5, 1, 1.25, 1.5, 2.4] } },
+  mortar: { name: 'Mortar of Ages', icon: '▦', ability: 'masonry', bonuses: { wallHpPct: [8, 18, 32, 44, 55, 90] } },
+  gateWard: { name: 'Ward of the Gate', icon: '⛨', ability: 'bulwark', bonuses: { gateHpPct: [10, 24, 44, 60, 75, 130] } },
+  goldenIdol: { name: 'Golden Idol', icon: '♛', ability: 'tithe', bonuses: { killGoldPct: [4, 10, 20, 27, 34, 55] } },
+  ledger: { name: "Merchant's Ledger", icon: '✉', ability: 'tithe', bonuses: { startingGoldAdd: [30, 70, 140, 190, 240, 420] } },
+  hourglass: { name: 'Cracked Hourglass', icon: '⧗', ability: 'stillness', bonuses: { abilityCooldownPct: [4, 10, 18, 23, 28, 45] } },
+  thornCrown: { name: 'Crown of Thorns', icon: '♆', ability: 'rot', bonuses: { thornsPct: [16, 36, 64, 87, 110, 200] } },
+  runestone: { name: 'Humming Runestone', icon: '✦', ability: 'frost', bonuses: { arcanePct: [12, 28, 52, 71, 90, 160] } },
+  compass: { name: "Hunter's Compass", icon: '✧', ability: 'meteor', bonuses: { artifactLuckPct: [5, 10, 18, 24, 30, 50] } },
   kingslayer: {
     name: "Kingslayer's Edge", icon: '†', ability: 'judgement',
-    bonuses: { heroDamagePct: [4, 8, 16, 28, 50], heroCritAdd: [2, 4, 8, 12, 20] },
+    bonuses: { heroDamagePct: [4, 8, 16, 22, 28, 50], heroCritAdd: [2, 4, 8, 10, 12, 20] },
   },
   heartOfWinter: {
     name: 'Heart of Winter', icon: '❄', ability: 'frost',
-    bonuses: { enemySpeedPct: [2, 4, 8, 12, 20], arcanePct: [6, 12, 24, 40, 70] },
+    bonuses: { enemySpeedPct: [2, 4, 8, 10, 12, 20], arcanePct: [6, 12, 24, 32, 40, 70] },
   },
 };

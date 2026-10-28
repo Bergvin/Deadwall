@@ -151,7 +151,7 @@ test('bonuses and abilities: perks, skills and equipped artifacts add up; unequi
   assert.equal(b.heroDamagePct, 22 + 8 + 28);
   assert.equal(b.heroCritAdd, 12);
   let ab = totalAbilities(cmd);
-  assert.equal(ab.judgement, 2.2);
+  assert.equal(ab.judgement, 2.4);
   assert.equal(ab.meteor, 1 + 1.5, 'skill and artifact with the same ability stack');
   assert.ok(isSkill('skillMeteor') && !isSkill('sharpSteel'));
   unequip(cmd, a.uid);
@@ -173,6 +173,7 @@ test('applyBonuses changes a copy and never the shared config', () => {
   assert.equal(c.ECONOMY.startingGold, CFG.ECONOMY.startingGold + 100);
   assert.equal(c.ZOMBIES.walker.hp, Math.round(CFG.ZOMBIES.walker.hp * 0.9));
   assert.equal(c.BONUS.killGoldPct, 20);
+  assert.equal(applyBonuses(CFG, { abilityCooldownPct: 50 }).HERO_ACTIVES.fireball.cooldown, CFG.HERO_ACTIVES.fireball.cooldown * 0.5, 'hero actives recharge faster');
   const t = applyBonuses(CFG, { heroDamagePct: 20, heroRangeAdd: 1, towerCostPct: 10 });
   assert.equal(t.TOWERS.fire.damage, CFG.TOWERS.fire.damage * 1.2, 'damage bonuses reach the towers');
   assert.equal(t.TOWERS.wind.range, CFG.TOWERS.wind.range + 1);
@@ -196,7 +197,7 @@ test('save: version 1 saves are upgraded, garbage commander data is cleaned', ()
     commander: {
       level: 3, xp: 1e9, pendingPicks: 2, offer: [{ id: 'hacked', rarity: 'mythical' }],
       perks: [{ id: 'sharpSteel', rarity: 'rare' }, { id: 'hallowedGround', rarity: 'common' }, { id: 'x' }],
-      artifacts: [{ uid: 4, id: 'mortar', rarity: 'epic' }, { uid: 5, id: 'mortar', rarity: 'rare', level: 99 }, { uid: 5, id: 'ledger', rarity: 'rare' }],
+      artifacts: [{ uid: 4, id: 'mortar', rarity: 'superb' }, { uid: 5, id: 'mortar', rarity: 'rare', level: 99 }, { uid: 5, id: 'ledger', rarity: 'rare' }],
       equipped: [5, 5, 99], nextUid: 1, artifactOffer: [{ id: 'mortar', rarity: 'rare' }, { id: 'hacked', rarity: 'rare' }],
     },
   });

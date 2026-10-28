@@ -10,19 +10,20 @@
 export const HERO_RULES = {
   /** Seconds a hero spends walking to a new wall when repositioned (cannot attack meanwhile). */
   repositionTime: 3,
-  /** XP per point of damage dealt (kill XP is added on top). */
-  xpPerDamage: 0.2,
+  /**
+   * XP: each kill's XP is shared by damage dealt (times killXpMult); no XP per point of
+   * damage, so bounces, splits and explosions cannot snowball the hero's levels.
+   */
+  xpPerDamage: 0,
+  killXpMult: 1,
   /** The champion keeps growing through a long run: about 1-2 levels per wave. */
   maxLevel: 100,
   /**
-   * XP needed to go from level L to L+1. Measured champion XP per wave (tools/simulate.js
-   * with LEVELS=1): ~220 in wave 1, ~1400 in wave 5, 2000-3000 in wave 10, up to ~10000 in
-   * wave 20. With the wave-clear XP below this keeps every class at roughly 1-2 levels per
-   * wave throughout.
+   * XP needed to go from level L to L+1. A wave's kill XP grows roughly linearly with the
+   * wave number (more enemies, tougher types), so a near-linear curve keeps the hero at about
+   * 1-2 levels per wave throughout (check with tools/simulate.js LEVELS=1).
    */
-  // The second term only matters at high levels, where damage XP grows with the steep late
-  // enemy HP; it keeps deep runs near 1-2 levels per wave instead of racing to the cap.
-  xpToNext: (level) => Math.round(60 * level ** 1.55 + 2 * level ** 2.6),
+  xpToNext: (level) => Math.round(60 * level + level ** 2),
   /**
    * Every cleared wave also gives each hero this fraction of its current level's XP, so
    * support champions (warrior, paladin) keep pace with the damage dealers.
@@ -274,11 +275,11 @@ export const HEROES = {
     model: 'alchemist',
     cost: 110,
     hp: 80,
-    damage: 10, damageType: 'physical',
-    attackInterval: 1.4,
+    damage: 16, damageType: 'physical',
+    attackInterval: 1.1,
     range: 5,
     attack: { kind: 'flask', speed: 8, aoe: 1 },
-    poisonDps: 6, poisonDuration: 4,
+    poisonDps: 14, poisonDuration: 4,
     critChance: 0.05, critMultiplier: 1.5,
     growth: { damage: 0.07, poison: 0.1, hp: 0.04 },
     abilities: {

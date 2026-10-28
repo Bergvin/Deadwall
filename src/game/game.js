@@ -98,7 +98,7 @@ export class Game {
     this.screens.hideGameOver();
     this.screens.setPaused(false);
     this.state = STATE.MENU;
-    this.screens.showHeroSelect(HEROES, CHAMPION, (type) => this.newGame(undefined, type));
+    this.screens.showHeroSelect(HEROES, CHAMPION, (type) => this.newGame(undefined, type), { styles: CFG.WEAPON_STYLES, names: CFG.ITEM_NAMES });
   }
 
   newGame(seed, heroType = 'archer') {

@@ -74,26 +74,28 @@ export class Screens {
   }
 
   /**
-   * Champion selection: one of the six classes leads the defence for the whole run.
-   * @param {Record<string, object>} heroes  HEROES config
-   * @param {{hpMult:number, damageMult:number}} champion
+   * Run start: pick the hero's starting weapon (a common one). The weapon decides how the
+   * hero attacks; abilities come from level-ups and better weapons drop during the run.
+   * @param {Record<string, object>} heroes  HEROES config (weapon styles' base stats)
+   * @param {{hpMult:number, damageMult:number, rangeAdd:number}} champion
    * @param {(type: string) => void} onPick
+   * @param {{styles: object, names: object}} weapons WEAPON_STYLES and ITEM_NAMES
    */
-  showHeroSelect(heroes, champion, onPick) {
+  showHeroSelect(heroes, champion, onPick, weapons) {
     this.over.hidden = true;
     this.cmd.hidden = true;
     this.menu.hidden = false;
     this.menu.innerHTML = '';
     const box = h('div', 'box wide',
-      '<h2>Choose your champion</h2><div class="tagline">One giant hero leads the defence. It stands on a 2×2 block of walls and grows stronger every wave. You get only one.</div>');
+      '<h2>Choose your starting weapon</h2><div class="tagline">Your hero starts with nothing but this. Every level brings a new ability to choose; better weapons and gear drop from elites and bosses.</div>');
     const grid = h('div', 'champions');
-    for (const [key, t] of Object.entries(heroes)) {
+    for (const [key, st] of Object.entries(weapons.styles)) {
+      const t = heroes[key];
       const card = h('button', 'champion',
-        `<div class="portrait c-${key}">${t.name[0]}</div><div class="cname">${t.name}</div>`
-        + `<div class="crole">${t.role}</div>`
-        + `<div class="cstats">HP ${Math.round(t.hp * champion.hpMult)} · DMG ${Math.round(t.damage * champion.damageMult)} · RNG ${t.range + champion.rangeAdd}</div>`
-        + `<div class="cabil">${Object.values(t.abilities).map((a) => a.name).join(' · ')}</div>`
-        + `<div class="cnote"><b>Strong:</b> ${t.strengths}<br><b>Weak:</b> ${t.weaknesses}</div>`);
+        `<div class="portrait c-${key}">${st.icon}</div><div class="cname">${weapons.names[key][0]}</div>`
+        + `<div class="crole">${st.weapon} · ${st.delivery === 'melee' ? 'melee' : 'ranged'} · ${t.damageType}</div>`
+        + `<div class="cstats">DMG ${Math.round(t.damage * champion.damageMult)} · ${(1 / t.attackInterval).toFixed(1)}/s · RNG ${t.range + champion.rangeAdd}</div>`
+        + `<div class="cnote">${t.description}</div>`);
       card.addEventListener('click', () => onPick(key));
       grid.append(card);
     }

@@ -55,6 +55,10 @@ export { HEROES, HERO_RULES, TARGETING } from './heroes.js';
 // Elemental towers and the champion hero rules live in towers.js.
 export { TOWERS, TOWER_RULES, CHAMPION } from './towers.js';
 
+// The hero's weapons, gear, loot, level-up abilities and knockback physics live in hero.js.
+export { WEAPON_STYLES, ITEM_NAMES, ITEM_RARITY, AFFIXES, LOOT, ABILITY_OFFER, HERO_ACTIVES, HERO_ABILITIES, PHYSICS } from './hero.js';
+export { RARITIES, RARITY_INFO } from './rarities.js';
+
 export const WAVES = {
   /** Seconds before wave 1 starts on its own (the player can start it earlier). */
   firstPrepTime: 60,
@@ -65,6 +69,13 @@ export const WAVES = {
   spawnInterval: 1.1,
   spawnIntervalDecay: 0.06,
   minSpawnInterval: 0.25,
+  /**
+   * Stragglers: once a wave has finished spawning, enemies still alive this many seconds
+   * later become enraged (faster, immune to knockback) so a wave can never be stalled by
+   * juggling enemies with knockback forever.
+   */
+  enrageAfter: 40,
+  enrageSpeedMult: 1.6,
   /** Gold for clearing a wave: base + perWave * wave. */
   clearBonusBase: 30,
   clearBonusPerWave: 10,

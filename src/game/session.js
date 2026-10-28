@@ -45,6 +45,8 @@ export class Session {
       },
       startWave: () => sim.waves.startNext(),
       togglePause: () => shared.togglePause(),
+      /** Stops/starts game time without the pause menu (the ability picker uses it). */
+      holdTime: (on) => { loop.paused = on; },
       setSpeed: (s) => { loop.speed = s; },
       isPaused: () => loop.paused,
       getSpeed: () => loop.speed,
@@ -76,7 +78,7 @@ export class Session {
   /** The run's champion joins at the start and waits in reserve until placed on a 2x2 block. */
   #recruitChampion(type) {
     const hero = this.sim.heroes.recruitChampion(type);
-    this.hud.toast(`${hero.name} the ${this.sim.config.HEROES[type].name} leads the defence. Build a 2×2 block of walls and place your champion on it.`, 'good');
+    this.hud.toast(`${hero.name} takes up the ${hero.weapon?.name ?? type}. Build a 2×2 block of walls and place your hero on it.`, 'good');
   }
 
   /** Visual and text feedback for simulation events. */
@@ -118,6 +120,39 @@ export class Session {
       effects.burst({ x: zombie.x, y: 1.2, z: zombie.z }, { count: 20, color, size: 0.08, speed: 1.8, up: 2.2, life: 0.9, spread: 0.6 });
     });
     ev.on('bossSpawned', (z) => fx.ring(z.x, z.z, 2.5, 0xd0453a, 1.2));
+    // Hero build feedback: loot, lightning, quakes, landings, phoenix.
+    ev.on('lootDropped', ({ item, x, z }) => {
+      const c = parseInt(this.sim.config.RARITY_INFO[item.rarity].color.slice(1), 16);
+      floaters.spawn({ x, y: 1.6, z }, item.name, 'cmdab');
+      fx.ring(x, z, 1, c, 0.9, 1.25);
+      effects.burst({ x, y: 0.8, z }, { count: 24, color: c, size: 0.08, speed: 1.2, up: 3, life: 1.2, spread: 0.3 });
+    });
+    ev.on('chainLightning', ({ from, to, crit }) => {
+      const c = crit ? 0xffe08a : 0xb8d8ff;
+      for (const t of to) {
+        fx.ring(t.x, t.z, 0.45, c, 0.25);
+        // A few sparks along the arc.
+        for (let k = 1; k <= 3; k++) {
+          const f = k / 4;
+          effects.burst({ x: from.x + (t.x - from.x) * f, y: 0.8, z: from.z + (t.z - from.z) * f }, { count: 1, color: c, size: 0.06, speed: 0.2, up: 0.3, life: 0.2, spread: 0.05 });
+        }
+      }
+    });
+    ev.on('heroQuake', ({ x, z }) => {
+      fx.ring(x, z, 3.5, 0xa07848, 0.8, 1.25);
+      effects.burst({ x, y: 0.3, z }, { count: 40, color: 0x8a7050, size: 0.12, speed: 3, up: 2.5, life: 1, spread: 1.5 });
+    });
+    ev.on('zombieLanded', ({ zombie, height }) => {
+      if (height < 0.6) return;
+      effects.burst({ x: zombie.x, y: 0.1, z: zombie.z }, { count: 8, color: 0x6a6050, size: 0.07, speed: 1.2, up: 0.8, life: 0.5, spread: 0.3 });
+    });
+    ev.on('heroPhoenix', (hero) => {
+      const p = this.sim.heroes.positionOf(hero);
+      if (!p) return;
+      fx.ring(p.x, p.z, 3, 0xff7a20, 1.2, 1.25);
+      effects.burst({ x: p.x, y: 2, z: p.z }, { count: 60, color: 0xff9a40, size: 0.12, speed: 2.5, up: 4, life: 1.4, spread: 0.8 });
+      floaters.spawn({ x: p.x, y: 3, z: p.z }, 'PHOENIX', 'level');
+    });
     // Commander abilities: their name floats where they strike.
     ev.on('commanderAbility', ({ icon, name, x, z, extra }) => {
       floaters.spawn({ x, y: 2.2, z }, `${icon} ${name}${extra ? ` ${extra}` : ''}`, 'cmdab');
@@ -208,6 +243,11 @@ export class Session {
     ev.on('waveStarted', ({ boss }) => sfx.play(boss ? 'boss' : 'waveStart'));
     ev.on('waveCleared', () => sfx.play('waveCleared'));
     ev.on('bossSpawned', () => sfx.play('boss'));
+    ev.on('lootDropped', () => sfx.play('levelUp', 1.4));
+    ev.on('heroAbilityChosen', () => sfx.play('levelUp', 1.2));
+    ev.on('chainLightning', () => sfx.play('arcane', 1.3));
+    ev.on('heroQuake', () => sfx.play('explosion', 0.8));
+    ev.on('heroPhoenix', () => sfx.play('fire'));
     ev.on('commanderAbility', ({ id }) => sfx.play({ meteor: 'explosion', frost: 'frost', judgement: 'holy', rot: 'poison', storm: 'arcane' }[id] ?? 'repair', 1.2));
     ev.on('bossAbility', () => sfx.play('boss', 0.6));
     for (const t of ['heroEndangered', 'heroFell']) ev.on(t, () => sfx.play('alarm'));
@@ -245,7 +285,7 @@ export class Session {
     // Health bars: damaged zombies, damaged walls.
     bars.begin(cam.camera);
     for (const z of sim.zombies.list) {
-      if (z.alive && z.hp < z.maxHp) bars.add(z.x, 1.15, z.z, z.hp / z.maxHp, healthColor(z.hp / z.maxHp), 0.6);
+      if (z.alive && z.hp < z.maxHp) bars.add(z.x, 1.15 + (z.air ?? 0), z.z, z.hp / z.maxHp, healthColor(z.hp / z.maxHp), 0.6);
     }
     for (const w of sim.walls.all()) {
       if (w.hp < w.maxHp) bars.add(w.x + 0.5, 1.75, w.y + 0.5, w.hp / w.maxHp, healthColor(w.hp / w.maxHp), 0.8);

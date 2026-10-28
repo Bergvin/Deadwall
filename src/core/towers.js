@@ -184,6 +184,20 @@ export class TowerSystem {
         targets.push(next);
         used.add(next);
       }
+      if (type.projectile.roll) {
+        // A rolling ball: dropped at the foot of the wall, it rolls straight on past the target.
+        const dx = first.x - t.x, dz = first.z - t.z, d = Math.hypot(dx, dz) || 1;
+        const k = 1 + 0.25 * (t.level - 1);
+        this.projectiles.fire({
+          ownerId: t.id, kind: type.projectile.kind,
+          from: { x: t.x + (dx / d) * 0.6, y: 0.35, z: t.z + (dz / d) * 0.6 },
+          speed: type.projectile.speed,
+          line: { dx: dx / d, dz: dz / d, length: s.range + type.projectile.extraLength, width: type.projectile.width, maxHits: 999 },
+          payload: { damage: s.damage, type: type.damageType, roll: type.projectile.roll * k, rollLift: type.projectile.rollLift, fx: 'earth-small' },
+        });
+        this.events.emit('towerAttack', { tower: t, targets: [first] });
+        continue;
+      }
       for (const z of targets) {
         this.projectiles.fire({
           ownerId: t.id, kind: type.projectile.kind,

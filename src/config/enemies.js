@@ -122,6 +122,12 @@ export const WAVE_TABLE = {
   hpBase: 1.75,
   hpGrowth: 0.39,
   hpGrowthLate: 0.078,
+  /**
+   * Exponential late growth: HP is also multiplied by exp(hpGrowthExp * (n - 1)). The hero's
+   * build stacks multiplicatively (weapon x abilities x bounces x splits), so only an
+   * exponential keeps every run finite.
+   */
+  hpGrowthExp: 0.16,
   damageBase: 1.3,
   damageGrowth: 0.06,
 };

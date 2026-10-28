@@ -105,3 +105,21 @@ test('tower DPS is tracked per wave like the champion', () => {
   assert.equal(sim.waves.phase, 'prep');
   assert.ok(t.lastWaveDps > 0 && t.kills === 1);
 });
+
+test('rolling stone: one ball crushes a whole line and scatters it sideways', () => {
+  const sim = new Simulation({ seed: 77 });
+  sim.economy.earn(10000);
+  const w = sim.walls.build('stone', 15, 16);
+  const t = sim.towers.build('roller', w.id);
+  assert.ok(t);
+  const line = [14, 12.5, 11].map((z) => {
+    const zb = sim.zombies.spawn('walker', 15.6, z);
+    zb.hp = zb.maxHp = 1e5;
+    sim.zombies.applyStun(zb, 1e5);
+    return zb;
+  });
+  const xs = line.map((z) => z.x);
+  sim.run(3);
+  assert.ok(line.every((z) => z.hp < z.maxHp), 'every zombie on the path was hit');
+  assert.ok(line.some((z, i) => Math.abs(z.x - xs[i]) > 0.3), 'and shoved off the path');
+});

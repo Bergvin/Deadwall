@@ -9,6 +9,8 @@
 //   water - splashing bolts that slow everything they touch (control)
 
 export const TOWERS = {
+  // (stone) rolls a heavy ball in a straight line out from the wall: hits everything on its
+  // path and shoves it aside. See TowerSystem.step and CombatSystem.impact (payload.roll).
   fire: {
     name: 'Fire Tower', element: 'Fire', color: 0xff6a20,
     description: 'Explosive fire bolts that set packs of zombies ablaze.',
@@ -51,6 +53,16 @@ export const TOWERS = {
     aoe: 0.8,
     slow: { factor: 0.55, duration: 2 },
   },
+  roller: {
+    name: 'Rolling Stone Tower', element: 'Stone', color: 0xb8a888,
+    description: 'Rolls a huge stone ball down the field that crushes and scatters a whole line.',
+    strengths: 'Long lines of zombies, pushing packs apart', weaknesses: 'Slow, can miss lone enemies off its path',
+    cost: 85,
+    damage: 40, damageType: 'physical',
+    interval: 3.2, range: 6,
+    /** roll: sideways shove; rollLift: hop; length beyond the target; width of the ball's path. */
+    projectile: { kind: 'roller', speed: 5.5, roll: 4.5, rollLift: 2.5, extraLength: 6, width: 0.6 },
+  },
 };
 
 export const TOWER_RULES = {
@@ -80,4 +92,8 @@ export const CHAMPION = {
   rangeAdd: 1,
   /** Visual scale of the champion model (heroes were ~0.9 units tall). */
   modelScale: 2,
+  /** A giant with a sword or mace: longer reach, heavier blows that cleave (melee weapons only). */
+  meleeRangeAdd: 1.5,
+  meleeDamageMult: 1.5,
+  meleeCleavePct: 35,
 };

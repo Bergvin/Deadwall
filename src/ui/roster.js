@@ -44,7 +44,7 @@ export class HeroRoster {
 
     const ev = sim.events;
     for (const t of ['heroRecruited', 'heroLevelUp', 'heroFell', 'heroRevived', 'heroDeployed',
-      'heroUnseated', 'waveCleared', 'talentBought', 'towerBuilt', 'towerRemoved', 'towerUpgraded']) {
+      'heroUnseated', 'waveCleared', 'talentBought', 'heroEquipped', 'heroAbilityChosen', 'towerBuilt', 'towerRemoved', 'towerUpgraded']) {
       ev.on(t, () => this.rebuild());
     }
     this.rebuild();
@@ -63,8 +63,8 @@ export class HeroRoster {
     for (const hero of this.sim.heroes.all()) {
       out.push({
         unit: hero, kind: 'hero', sortKey: `0${hero.type}`,
-        badge: `<span class="portrait mini c-${hero.type}">${cfg.HEROES[hero.type].name[0]}</span>`,
-        title: hero.name, sub: `${cfg.HEROES[hero.type].name} · Lv ${hero.level}`,
+        badge: `<span class="portrait mini c-${hero.type}">${cfg.WEAPON_STYLES?.[hero.type]?.icon ?? cfg.HEROES[hero.type].name[0]}</span>`,
+        title: hero.name, sub: `${hero.weapon?.name ?? cfg.HEROES[hero.type].name} · Lv ${hero.level}`,
       });
     }
     for (const t of this.sim.towers.all()) {
@@ -115,7 +115,7 @@ export class HeroRoster {
       if (r.entry.kind === 'hero') {
         r.hp.style.width = `${((u.hp / u.maxHp) * 100).toFixed(0)}%`;
         r.hp.style.background = u.fallen || u.hp / u.maxHp <= 0.35 ? 'var(--red)' : '#6fa8ff';
-        upgrade = !u.fallen && this.sim.heroes.talentTiers(u).some((t) => t.unlocked && !t.chosen && gold >= t.cost);
+        upgrade = !u.fallen && (u.pendingPicks > 0 || this.sim.heroes.talentTiers(u).some((t) => t.unlocked && !t.chosen && gold >= t.cost));
         r.el.classList.toggle('reserve', !u.wallId && !u.fallen);
       } else {
         const cost = this.sim.towers.upgradeCost(u.id);

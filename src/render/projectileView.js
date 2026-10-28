@@ -15,11 +15,14 @@ const STYLES = {
   boulder: { geom: () => new THREE.DodecahedronGeometry(0.15), color: 0x8a6a48 },
   gust: { geom: () => cyl(0.025, 0.6), color: 0xd8fff0 },
   waterbolt: { geom: () => new THREE.SphereGeometry(0.1, 10, 8), color: 0x4aa8ff },
+  roller: { geom: () => new THREE.DodecahedronGeometry(0.32, 1), color: 0x9a8a70 },
+  shard: { geom: () => cyl(0.02, 0.28), color: 0xd8f0ff },
 };
 const KIND_STYLE = {
   arrow: 'shaft', piercing: 'pierce', bolt: 'bolt', apbolt: 'apbolt',
   orb: 'orb', fireball: 'fireball', flask: 'flask', bomb: 'bomb',
   firebolt: 'firebolt', boulder: 'boulder', gust: 'gust', waterbolt: 'waterbolt',
+  roller: 'roller', shard: 'shard',
 };
 
 function cyl(r, len) {

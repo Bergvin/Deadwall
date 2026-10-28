@@ -125,7 +125,8 @@ test('a full game: every enemy type and both bosses appear, and the run ends in 
   sim.fortress.hp = Math.min(sim.fortress.hp, 1500);
   sim.fortress.maxHp = 1500;
   // Keep going until the fortress falls (cap so the test cannot hang).
-  while (!sim.over && sim.time < 3 * 3600) {
+  const until = sim.time + 3 * 3600;
+  while (!sim.over && sim.time < until) {
     if (sim.waves.phase === PHASE.PREP) sim.waves.startNext();
     sim.step(1 / 30);
   }

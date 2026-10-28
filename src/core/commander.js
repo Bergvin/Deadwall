@@ -293,6 +293,8 @@ export function applyBonuses(base, b = {}, abilities = {}) {
     t.range += b.heroRangeAdd ?? 0;
     t.cost = Math.max(1, Math.round(t.cost * less('towerCostPct')));
   }
+  // The hero's active abilities (picked during a run) recharge faster too.
+  for (const a of Object.values(c.HERO_ACTIVES ?? {})) a.cooldown *= less('abilityCooldownPct');
   c.HERO_RULES.xpPerDamage *= more('heroXpPct');
 
   for (const w of Object.values(c.WALLS)) {

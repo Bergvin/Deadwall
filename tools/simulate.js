@@ -1,6 +1,8 @@
 // Balance check: plays headless runs with scripted strategies and reports how far they get.
 // Usage: node tools/simulate.js [runs=4] [strategy|all] [maxMinutes=150]
 // LEVELS=1 also prints the champion's level after every cleared wave (XP pacing check).
+// BUILDS=1 prints each run's final hero build and which abilities show up in deep runs
+// (a quick way to spot overpowered combos).
 // COMMANDER=fresh|mid|strong plays with a commander profile (perks, skills, artifacts);
 // targets: fresh dies around wave 5, a mid commander gets clearly further, strong far.
 // Every strategy except "none" builds rings of walls around the gate, repairs, revives the
@@ -60,7 +62,7 @@ const STRATEGIES = {
   none: { walls: false, towers: [] },
   walls: { walls: true, towers: [] },
   ...Object.fromEntries(Object.keys(TOWERS).map((t) => [t, { walls: true, towers: [t], upgrades: true }])),
-  mixed: { walls: true, towers: ['wind', 'fire', 'earth', 'water'], upgrades: true, talents: true, special: true },
+  mixed: { walls: true, towers: ['wind', 'fire', 'earth', 'roller', 'water'], upgrades: true, talents: true, special: true },
 };
 
 /**
@@ -117,12 +119,26 @@ function prepare(sim, st, state) {
     }
   }
   buildRings(sim, st, 80);
-  if (st.talents && champ) {
-    for (const tier of heroes.talentTiers(champ)) {
-      if (!tier.chosen && tier.unlocked) heroes.buyTalent(champ.id, tier.index, tier.options[tier.index % 2].id);
-    }
-  }
+  if (champ) heroBuild(sim, champ);
   if (sim.fortress.nextReinforcement() && economy.gold > 700) sim.fortress.reinforce();
+}
+
+const R = (r) => CFG.RARITIES.indexOf(r);
+
+/** Between waves: take every ability pick (best rarity, synergy first) and wear the best drops. */
+function heroBuild(sim, h) {
+  const { heroes } = sim;
+  while (h.pendingPicks > 0) {
+    const offer = heroes.abilityOffer(h.id);
+    if (!offer?.length) break;
+    const best = offer.map((o, i) => ({ o, i })).sort((a, b) => R(b.o.rarity) - R(a.o.rarity) || b.o.synergy - a.o.synergy)[0];
+    if (!heroes.chooseAbility(h.id, best.i)) break;
+  }
+  for (const item of [...h.bag].sort((a, b) => R(b.rarity) - R(a.rarity))) {
+    const cur = item.slot === 'weapon' ? h.weapon : h.gear[item.slot];
+    if (!cur || R(item.rarity) > R(cur.rarity)) heroes.equipItem(h.id, item.uid);
+  }
+  for (const item of [...h.bag]) heroes.sellItem(h.id, item.uid);
 }
 
 function play(seed, name, heroType) {
@@ -142,7 +158,11 @@ function play(seed, name, heroType) {
     }
     sim.step(DT);
   }
-  return { ...sim.summary(), bossesKilled, levels, heroType, towers: sim.towers.count, timedOut: !sim.over };
+  const hero = [...sim.heroes.all()][0];
+  return {
+    ...sim.summary(), bossesKilled, levels, heroType, towers: sim.towers.count, timedOut: !sim.over,
+    weapon: hero ? `${hero.weapon.rarity} ${hero.weapon.name}` : '', abilities: hero ? { ...hero.abilities } : {},
+  };
 }
 
 const names = which === 'all' ? Object.keys(STRATEGIES) : [which];
@@ -154,5 +174,14 @@ for (const name of names) {
   const avg = waves.reduce((a, b) => a + b, 0) / runs;
   const capped = res.filter((r) => r.timedOut).length;
   if (process.env.LEVELS) for (const r of res) console.log(`  ${r.heroType.padEnd(11)} level after each wave: ${r.levels.join(' ')}`);
+  if (process.env.BUILDS) {
+    for (const r of res) console.log(`  wave ${String(r.wave).padStart(2)} ${r.heroType.padEnd(11)} ${r.weapon} · ${Object.entries(r.abilities).map(([k, v]) => `${k}${v > 1 ? v : ''}`).join(' ')}`);
+    const per = {};
+    for (const r of res) for (const k of Object.keys(r.abilities)) (per[k] ??= []).push(r.wave);
+    const avg = res.reduce((s, r) => s + r.wave, 0) / res.length;
+    const top = Object.entries(per).filter(([, w]) => w.length >= 2)
+      .map(([k, w]) => [k, w.reduce((s, x) => s + x, 0) / w.length, w.length]).sort((a, b) => b[1] - a[1]);
+    console.log(`  abilities in runs above the average (${avg.toFixed(1)}): ${top.filter((t) => t[1] > avg).map(([k, a, n]) => `${k} ${a.toFixed(1)} (${n})`).join(', ')}`);
+  }
   console.log(`${process.env.COMMANDER ? `[${process.env.COMMANDER}] ` : ''}${name.padEnd(7)} waves [${waves.join(', ')}] avg ${avg.toFixed(1)}  bosses ${(res.reduce((a, r) => a + r.bossesKilled, 0) / runs).toFixed(1)}  towers ${(res.reduce((a, r) => a + r.towers, 0) / runs).toFixed(0)}${capped ? `  (${capped} hit the ${maxMinutes}-min cap)` : ''}`);
 }

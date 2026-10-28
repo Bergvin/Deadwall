@@ -24,6 +24,8 @@ export class HeroView {
     events.on('heroAttack', ({ hero }) => this.#playOnce(hero.id, 'attack', hero.stats.attackInterval * 0.9));
     events.on('abilityUsed', ({ hero }) => this.#playOnce(hero.id, 'cast', 0.9));
     events.on('heroDismissed', (h) => this.#drop(h.id));
+    // A weapon of another style changes the hero's model: rebuilt on the next update.
+    events.on('heroWeaponChanged', (h) => this.#drop(h.id));
   }
 
   get pickables() {

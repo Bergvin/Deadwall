@@ -1,17 +1,22 @@
-// The champion: one hero per run, chosen at the start. It stands on a 2x2 block of walls
-// (all four cells must be walls without towers). Handles deployment, repositioning,
-// experience, levels, talents and targeting. Combat itself lives in combat.js.
+// The hero: one per run. It starts with a common weapon of the player's choice and no
+// abilities; every level gives an ability pick (three random offers, chosen between waves),
+// and weapons and gear drop during the run (equipped between waves). Its weapon's style (a
+// HEROES key, kept in h.type) decides how it attacks and what it looks like. It stands on a
+// 2x2 block of walls (all four cells must be walls without towers). Handles deployment,
+// repositioning, experience, levels, the build and targeting. Combat lives in combat.js.
 // A hero is either in reserve (wallId 0), walking to a block (moving > 0) or deployed.
 // h.wallIds lists the four walls of its block; h.wallId is the top-left one.
 import { heroStats } from './heroStats.js';
+import { makeItem, heroMods, applyBuild, rollAbilityOffer } from './heroBuild.js';
 
 export class HeroSystem {
   #heroes = new Map();
   #nextId = 1;
 
-  /** @param {{walls, zombies, economy, events, rng, types, rules, economyConfig, champion?}} deps */
-  constructor({ walls, zombies, economy, events, rng, types, rules, economyConfig, champion = null }) {
-    Object.assign(this, { walls, zombies, economy, events, rng, types, rules, economyConfig, champion });
+  /** @param {{walls, zombies, economy, events, rng, types, rules, economyConfig, champion?, cfg?}} deps
+   *  cfg: the whole gameplay config (weapons, gear, abilities); without it heroes have no build. */
+  constructor({ walls, zombies, economy, events, rng, types, rules, economyConfig, champion = null, cfg = null }) {
+    Object.assign(this, { walls, zombies, economy, events, rng, types, rules, economyConfig, champion, cfg });
     this.usedNames = new Set();
     // Losing (or selling) any wall of the block drops the champion back into reserve.
     events.on('wallRemoved', ({ wall, cause }) => {
@@ -77,7 +82,7 @@ export class HeroSystem {
     return name;
   }
 
-  /** Recomputes derived stats after a level or talent change, keeping the HP ratio. */
+  /** Recomputes derived stats after a level, ability or equipment change, keeping the HP ratio. */
   applyStats(h) {
     const ratio = h.maxHp ? h.hp / h.maxHp : 1;
     h.stats = heroStats(this.types[h.type], h.level, h.talents);
@@ -87,6 +92,16 @@ export class HeroSystem {
       h.stats.maxHp = Math.round(h.stats.maxHp * c.hpMult);
       h.stats.damage = Math.round(h.stats.damage * c.damageMult * 10) / 10;
       h.stats.range += c.rangeAdd;
+    }
+    if (this.cfg?.WEAPON_STYLES) {
+      const delivery = this.cfg.WEAPON_STYLES[h.type]?.delivery;
+      const mods = heroMods(this.cfg, h);
+      if (delivery === 'melee' && c) {
+        h.stats.damage *= c.meleeDamageMult ?? 1;
+        mods.meleeRangeAdd = (mods.meleeRangeAdd ?? 0) + (c.meleeRangeAdd ?? 0);
+        mods.cleavePct = (mods.cleavePct ?? 0) + (c.meleeCleavePct ?? 0);
+      }
+      h.stats = applyBuild(h.stats, mods, delivery);
     }
     h.maxHp = h.stats.maxHp;
     h.hp = Math.round(h.maxHp * ratio);
@@ -146,6 +161,18 @@ export class HeroSystem {
       lowWarned: false,
       /** Use abilities automatically (the player can still cast them by hand). */
       autoCast: true,
+      /** The build: a weapon (its style is `type`), gear, abilities by rank, a bag of drops. */
+      weapon: this.cfg?.WEAPON_STYLES ? makeItem(this.cfg, { slot: 'weapon', style: typeKey, rarity: 'common', affixes: [] }) : null,
+      gear: { armor: null, trinket: null },
+      bag: [],
+      abilities: {},
+      /** Level-up picks waiting, and the three offers for the next one (rolled once). */
+      pendingPicks: 0,
+      offer: null,
+      /** Combat state: frenzy stacks, hit counter (earthshaker), phoenix used this wave. */
+      frenzy: 0,
+      hitCount: 0,
+      phoenixUsed: false,
       /** Damage dealt in the current wave, and the result of the last finished wave. */
       waveDamage: 0,
       lastWaveDamage: 0,
@@ -221,6 +248,14 @@ export class HeroSystem {
    */
   damageHero(h, amount, source = null) {
     if (!h || h.fallen || !h.wallId || !(amount > 0)) return 0;
+    amount *= 1 - (h.stats.damageReduction ?? 0);
+    // Phoenix Heart: once per wave the hero rises again instead of falling.
+    if (h.hp - amount <= 0 && h.stats.phoenix && !h.phoenixUsed) {
+      h.phoenixUsed = true;
+      h.hp = h.maxHp;
+      this.events.emit('heroPhoenix', h);
+      return 0;
+    }
     const dealt = Math.min(h.hp, amount);
     h.hp -= dealt;
     this.events.emit('heroDamaged', { hero: h, amount: dealt, source });
@@ -247,7 +282,11 @@ export class HeroSystem {
 
   /** Restores every standing hero (between waves). */
   healAll() {
-    for (const h of this.#heroes.values()) if (!h.fallen) { h.hp = h.maxHp; h.lowWarned = false; }
+    for (const h of this.#heroes.values()) {
+      h.phoenixUsed = false;
+      h.frenzy = 0;
+      if (!h.fallen) { h.hp = h.maxHp; h.lowWarned = false; }
+    }
   }
 
   /** Set by the simulation: revival is only possible between waves. */
@@ -315,13 +354,108 @@ export class HeroSystem {
       h.level++;
       this.applyStats(h);
       h.hp = h.maxHp; // a level-up restores the hero
+      if (this.cfg?.HERO_ABILITIES) h.pendingPicks++;
       this.events.emit('heroLevelUp', h);
     }
     if (h.level >= this.rules.maxLevel) h.xp = 0;
   }
 
-  /** Talent tiers with availability for this hero. */
+  // --- build: abilities and equipment -------------------------------------------
+  /** Set by the simulation: abilities and equipment only change between waves. */
+  buildAllowed = () => true;
+
+  /** The three offers for the hero's next pick (rolled once, kept until chosen). */
+  abilityOffer(heroId) {
+    const h = this.get(heroId);
+    if (!h || h.pendingPicks <= 0 || !this.cfg) return null;
+    h.offer ??= rollAbilityOffer(this.cfg, h, () => this.rng.next());
+    return h.offer;
+  }
+
+  /** Takes offer `index`. Only between waves. Returns the chosen {id, rank} or null. */
+  chooseAbility(heroId, index) {
+    const h = this.get(heroId);
+    const offer = this.abilityOffer(heroId);
+    const pick = offer?.[index];
+    if (!pick) return null;
+    if (!this.buildAllowed()) {
+      this.events.emit('actionRejected', { action: 'ability', reason: 'wave_active' });
+      return null;
+    }
+    h.abilities[pick.id] = (h.abilities[pick.id] ?? 0) + 1;
+    h.pendingPicks--;
+    h.offer = null;
+    this.applyStats(h);
+    this.events.emit('heroAbilityChosen', { hero: h, id: pick.id, rank: h.abilities[pick.id] });
+    return { id: pick.id, rank: h.abilities[pick.id] };
+  }
+
+  /** Grants an ability directly (tests, debug). */
+  grantAbility(heroId, id, rank = 1) {
+    const h = this.get(heroId);
+    if (!h) return;
+    h.abilities[id] = rank;
+    this.applyStats(h);
+  }
+
+  /** A dropped item goes into the hero's bag; a full bag sells it on the spot. */
+  addLoot(item) {
+    const h = this.#heroes.values().next().value;
+    if (!h || !item) return { stored: false, gold: 0 };
+    if (h.bag.length >= (this.cfg?.LOOT.bagSize ?? 12)) {
+      const gold = this.#salvageValue(item);
+      this.economy.earn(gold, `loot:${item.rarity}`);
+      return { stored: false, gold };
+    }
+    h.bag.push(item);
+    this.events.emit('heroLootStored', { hero: h, item });
+    return { stored: true, gold: 0 };
+  }
+
+  #salvageValue(item) {
+    return this.cfg?.RARITY_INFO?.[item.rarity]?.salvageGold ?? 5;
+  }
+
+  /** Equips a bag item (between waves); the old one goes back into the bag. */
+  equipItem(heroId, uid) {
+    const h = this.get(heroId);
+    const i = h ? h.bag.findIndex((x) => x.uid === uid) : -1;
+    if (i < 0) return false;
+    if (!this.buildAllowed()) {
+      this.events.emit('actionRejected', { action: 'equip', reason: 'wave_active' });
+      return false;
+    }
+    const [item] = h.bag.splice(i, 1);
+    const old = item.slot === 'weapon' ? h.weapon : h.gear[item.slot];
+    if (old) h.bag.push(old);
+    if (item.slot === 'weapon') {
+      h.weapon = item;
+      const changed = h.type !== item.style;
+      h.type = item.style;
+      if (changed) this.events.emit('heroWeaponChanged', h);
+    } else {
+      h.gear[item.slot] = item;
+    }
+    this.applyStats(h);
+    this.events.emit('heroEquipped', { hero: h, item });
+    return true;
+  }
+
+  /** Sells a bag item for gold (any time). */
+  sellItem(heroId, uid) {
+    const h = this.get(heroId);
+    const i = h ? h.bag.findIndex((x) => x.uid === uid) : -1;
+    if (i < 0) return 0;
+    const [item] = h.bag.splice(i, 1);
+    const gold = this.#salvageValue(item);
+    this.economy.earn(gold, `sell:${item.rarity}`);
+    this.events.emit('heroItemSold', { hero: h, item, gold });
+    return gold;
+  }
+
+  /** Talent tiers with availability for this hero (none with the build system). */
   talentTiers(h) {
+    if (this.cfg?.HERO_ABILITIES) return [];
     return this.types[h.type].talents.map((tier, i) => ({
       index: i,
       ...tier,
@@ -358,14 +492,17 @@ export class HeroSystem {
     return true;
   }
 
-  /** Gives XP to heroes that damaged a dead zombie, split by damage share. */
+  /**
+   * Gives XP to heroes that damaged a dead zombie: its XP split by damage share (plus, if
+   * configured, XP per point of damage). Share-based XP cannot snowball with a strong build.
+   */
   awardKillXp(zombie) {
     let total = 0;
     for (const v of zombie.contributors.values()) total += v;
     if (!total) return;
     for (const [id, dmg] of zombie.contributors) {
       const h = this.get(id);
-      if (h) this.addXp(h, zombie.xp * (dmg / total) + dmg * this.rules.xpPerDamage);
+      if (h) this.addXp(h, zombie.xp * (dmg / total) * (this.rules.killXpMult ?? 1) + dmg * this.rules.xpPerDamage);
     }
   }
 

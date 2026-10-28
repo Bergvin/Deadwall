@@ -371,3 +371,42 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 .pickedmsg { margin: 8px 0 0; font-size: 14px; }
 .screen .box.wide .offer { text-align: center; }
 .floater.cmdab { color: #b8d8ff; font-family: var(--font); font-size: 15px; text-shadow: 0 0 8px rgba(80, 140, 255, 0.9); }
+
+/* --- hero build: panel, picker, notice --- */
+.panel .pickbtn { width: 100%; margin: 8px 0 4px; color: var(--gold); border-color: var(--gold); }
+.panel .pickbtn.glow { box-shadow: 0 0 12px rgba(232, 182, 76, 0.55); animation: glowpulse 1.6s ease-in-out infinite; }
+.panel .mechs { display: flex; flex-wrap: wrap; gap: 3px; margin: 4px 0 2px; }
+.panel .mechs span { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: rgba(120, 160, 255, 0.12); color: #b8d0ff; border: 1px solid rgba(120, 160, 255, 0.3); }
+.panel .owned { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 6px; }
+.panel .owned .chip { --rc: #888; font-size: 11px; padding: 2px 6px; border-radius: 3px; border: 1px solid var(--rc); color: var(--text); background: color-mix(in srgb, var(--rc) 14%, transparent); cursor: help; }
+.panel .owned .chip.off { opacity: 0.4; text-decoration: line-through; }
+.panel .itemtile { --rc: #666; border: 1px solid color-mix(in srgb, var(--rc) 70%, transparent); border-radius: 4px; padding: 4px 6px; margin: 4px 0; background: rgba(24, 22, 20, 0.9); }
+.panel .itemtile.empty { border-style: dashed; border-color: var(--border); }
+.panel .itemtile .iname { font-size: 12px; font-weight: 600; color: var(--rc); }
+.panel .itemtile .ilines { font-size: 11px; color: #cfc4ad; line-height: 1.4; margin-top: 1px; }
+.panel .itemtile .iactions { display: flex; gap: 4px; margin-top: 4px; }
+.btn.small { padding: 2px 8px; font-size: 11px; }
+
+.picker { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(6, 5, 4, 0.72); z-index: 9; }
+.picker[hidden] { display: none; }
+.pickbox { text-align: center; padding: 24px 28px; background: rgba(18, 16, 14, 0.95); border: 1px solid var(--border-hi); border-radius: 8px; width: min(860px, 94vw); box-sizing: border-box; }
+.pickbox h2 { font-family: var(--font); margin: 0 0 4px; color: #e8d8b8; }
+.pickrow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 18px 0; }
+.pickcard {
+  --rc: #888; font: inherit; color: var(--text); cursor: pointer; padding: 18px 12px; border-radius: 8px; min-height: 170px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rc) 20%, transparent), rgba(20, 18, 16, 0.96));
+  border: 1px solid var(--rc); box-shadow: 0 0 12px color-mix(in srgb, var(--rc) 35%, transparent); transition: transform 0.12s;
+}
+.pickcard:hover { transform: translateY(-4px); box-shadow: 0 0 26px color-mix(in srgb, var(--rc) 70%, transparent); }
+.pickcard .pname { font-family: var(--font); font-size: 19px; margin: 8px 0 6px; }
+.pickcard .pdesc { font-size: 13px; color: #e0d6c0; line-height: 1.45; }
+.pickcard .ptags { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; margin-top: 10px; }
+.pickcard .syn { font-size: 10px; letter-spacing: 1.5px; color: #7cff9a; border: 1px solid #3a8a50; border-radius: 3px; padding: 0 4px; margin-left: 4px; }
+.pickcard .rankup { font-size: 12px; color: var(--gold); }
+.pickcard.r-legendary, .pickcard.r-mythical { animation: mythic 2s ease-in-out infinite; }
+@media (max-width: 640px) { .pickrow { grid-template-columns: 1fr; } }
+
+.heronotice { position: absolute; top: 98px; left: 50%; transform: translateX(-50%); z-index: 3; font: inherit; font-weight: 700; font-size: 13px;
+  padding: 5px 14px; border-radius: 16px; color: var(--muted); background: rgba(20, 18, 16, 0.9); border: 1px solid var(--border); cursor: pointer; }
+.heronotice.ready { color: var(--gold); border-color: var(--gold); animation: glowpulse 1.6s ease-in-out infinite; }
+.heronotice[hidden] { display: none; }

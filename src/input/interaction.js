@@ -345,6 +345,7 @@ export class Interaction {
       case 'Digit6': this.enterTowerBuild('earth'); break;
       case 'Digit7': this.enterTowerBuild('wind'); break;
       case 'Digit8': this.enterTowerBuild('water'); break;
+      case 'Digit9': this.enterTowerBuild('roller'); break;
       case 'KeyU': {
         const sys = sel?.kind === 'wall' ? this.walls : sel?.kind === 'tower' ? this.towers : null;
         if (sys) {
@@ -368,7 +369,7 @@ export class Interaction {
       case 'KeyQ': case 'KeyE': case 'KeyF': {
         if (sel?.kind !== 'hero') return;
         const h = this.heroes.get(sel.id);
-        const ids = Object.keys(this.sim.config.HEROES[h.type].abilities);
+        const ids = this.combat.abilityIds(h);
         const id = ids[{ KeyQ: 0, KeyE: 1, KeyF: 2 }[e.code]];
         if (id) this.useAbility(h.id, id);
         break;

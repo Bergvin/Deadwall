@@ -90,7 +90,8 @@ export class ProjectileSystem {
     p.dx = L.dx; p.dz = L.dz; p.dy = 0;
     p.x += L.dx * stepLen;
     p.z += L.dz * stepLen;
-    p.y = Math.max(AIM_HEIGHT, p.y - 0.8 * dt);
+    // Shafts sink toward aim height; a ball that starts on the ground keeps rolling there.
+    p.y = p.sy < AIM_HEIGHT ? p.sy : Math.max(AIM_HEIGHT, p.y - 0.8 * dt);
     p.travelled += stepLen;
     for (const z of this.zombies.inRange(p.x, p.z, L.width)) {
       if (p.hit.has(z.id)) continue;

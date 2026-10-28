@@ -1,5 +1,6 @@
 import { Game } from './game/game.js';
 import { addXp, addArtifact, rollArtifactOffer } from './core/commander.js';
+import { makeItem } from './core/heroBuild.js';
 import { writeSave } from './core/save.js';
 
 const game = new Game();
@@ -71,6 +72,15 @@ window.debug = {
   commanderXp(n) { const l = addXp(game.save.commander, n); writeSave(game.save); return l; },
   /** Adds an artifact to the stash (merging like a real pick): debug.giveArtifact('bloodstone', 'legendary'). */
   giveArtifact(id, rarity = 'common') { const r = addArtifact(game.save.commander, { id, rarity }); writeSave(game.save); return r; },
+  /** Puts an item in the hero's bag: debug.loot('weapon', 'mythical', 'archer'). */
+  loot(slot = 'weapon', rarity = 'rare', style = 'archer') {
+    const item = makeItem(sim().config, { slot, rarity, style: slot === 'weapon' ? style : null });
+    return sim().heroes.addLoot(item), item;
+  },
+  /** Grants the hero an ability at a rank: debug.grant('ricochet', 2). */
+  grant(id, rank = 1) { const h = [...sim().heroes.all()][0]; sim().heroes.grantAbility(h.id, id, rank); return h.abilities; },
+  /** Gives the hero XP (level-ups give ability picks). */
+  heroXp(n) { const h = [...sim().heroes.all()][0]; sim().heroes.addXp(h, n); return h.level; },
   /** Rolls a run-end artifact offer as if a run had reached `wave`. */
   artifactOffer(wave = 10) { game.save.commander.artifactOffer = rollArtifactOffer(wave, Math.random); writeSave(game.save); return game.save.commander.artifactOffer; },
 };
