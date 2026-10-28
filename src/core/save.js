@@ -13,7 +13,11 @@ const DEFAULTS = () => ({
   highScore: 0,
   totalKills: 0,
   runs: 0,
-  settings: { muted: false, volume: 0.7, shadows: true, showPath: true },
+  settings: {
+    muted: false, volume: 0.7, shadows: true, showPath: true,
+    /** Hero loot auto-sell: drops of a rarity not in `keep` are sold at once. */
+    lootAutoSell: { on: false, keep: RARITIES.slice(1) },
+  },
   commander: commanderDefaults(),
 });
 
@@ -75,6 +79,11 @@ export function sanitize(raw) {
       volume: Number.isFinite(raw.settings?.volume) ? Math.min(1, Math.max(0, raw.settings.volume)) : d.settings.volume,
       shadows: bool(raw.settings?.shadows, d.settings.shadows),
       showPath: bool(raw.settings?.showPath, d.settings.showPath),
+      lootAutoSell: {
+        on: bool(raw.settings?.lootAutoSell?.on, d.settings.lootAutoSell.on),
+        keep: Array.isArray(raw.settings?.lootAutoSell?.keep)
+          ? RARITIES.filter((r) => raw.settings.lootAutoSell.keep.includes(r)) : d.settings.lootAutoSell.keep,
+      },
     },
     commander: sanitizeCommander(raw.commander),
   };

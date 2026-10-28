@@ -1,7 +1,7 @@
 // Hero UI: the hero panel (stats, abilities, equipment, bag), the level-up pick overlay
 // (three cards, chosen between waves) and the small notice that picks are waiting.
 // Rendering only; every change goes through HeroSystem / CombatSystem.
-import { RARITY_INFO } from '../config/rarities.js';
+import { RARITIES, RARITY_INFO } from '../config/rarities.js';
 import { itemLines, abilityFits } from '../core/heroBuild.js';
 
 const h = (tag, cls, html) => {
@@ -19,6 +19,41 @@ const ABILITY_KEYS = ['Q', 'E', 'F', 'G', 'H'];
 export function weaponLabel(cfg, hero) {
   const w = hero.weapon;
   return w ? `<span style="color:${color(w.rarity)}">${w.name}</span>` : cfg.HEROES[hero.type].name;
+}
+
+/**
+ * Auto-sell setting for drops: an on/off switch and one toggle per rarity to keep. Drops of
+ * an unkept rarity are sold for gold the moment they drop; a button sells unkept bag items.
+ */
+function autoSellBar(hud, hero) {
+  const heroes = hud.sim.heroes;
+  const s = heroes.autoSell;
+  const redraw = () => hud.showSelection(hud.selection);
+  const bar = h('div', `autosalv${s.on ? ' on' : ''}`);
+  const toggle = h('label', 'astoggle', `<input type="checkbox"${s.on ? ' checked' : ''}> Auto-sell drops`);
+  toggle.title = 'Weapons and gear of a rarity you do not keep are sold for gold as soon as they drop';
+  toggle.querySelector('input').addEventListener('change', (e) => { hud.actions.setAutoSell({ on: e.target.checked }); redraw(); });
+  bar.append(toggle, h('span', 'dim', 'Keep:'));
+  for (const r of RARITIES) {
+    const kept = s.keep.includes(r);
+    const chip = h('button', `keepchip${kept ? ' kept' : ''}`, RARITY_INFO[r].name);
+    chip.style.setProperty('--rc', color(r));
+    chip.title = kept ? `Keeping ${RARITY_INFO[r].name} drops (click to sell them instead)` : `Selling ${RARITY_INFO[r].name} drops (click to keep them)`;
+    chip.addEventListener('click', () => {
+      hud.actions.setAutoSell({ keep: kept ? s.keep.filter((k) => k !== r) : [...s.keep, r] });
+      redraw();
+    });
+    bar.append(chip);
+  }
+  const unkept = heroes.unkeptItems(hero.id);
+  if (unkept.length) {
+    const gold = unkept.reduce((sum, item) => sum + RARITY_INFO[item.rarity].salvageGold, 0);
+    const b = h('button', 'btn small salvnow', `Sell ${unkept.length} unkept +${gold}g`);
+    b.title = 'Sell the bag items of rarities you do not keep';
+    b.addEventListener('click', () => { heroes.sellUnkept(hero.id); redraw(); });
+    bar.append(b);
+  }
+  return bar;
 }
 
 /** One item as a tile (equipped slot or bag entry). */
@@ -149,6 +184,7 @@ export function buildHeroPanel(hud, hero) {
   side.append(itemTile(cfg, hero.weapon, { slotName: 'Weapon' }));
   side.append(itemTile(cfg, hero.gear.armor, { slotName: 'Armor' }));
   side.append(itemTile(cfg, hero.gear.trinket, { slotName: 'Trinket' }));
+  side.append(autoSellBar(hud, hero));
   if (hero.bag.length) {
     side.append(h('div', 'section', `Bag <span class="dim">${hero.bag.length} / ${cfg.LOOT.bagSize}</span>`));
     for (const item of [...hero.bag].sort((a, b) => cfg.RARITIES.indexOf(b.rarity) - cfg.RARITIES.indexOf(a.rarity))) {

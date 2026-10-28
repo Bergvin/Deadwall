@@ -52,7 +52,13 @@ export class Session {
       getSpeed: () => loop.speed,
       toggleMute: () => shared.setSetting('muted', !shared.settings.muted),
       isMuted: () => shared.settings.muted,
+      /** Hero loot auto-sell: changes the run's setting and remembers it for later runs. */
+      setAutoSell: (change) => {
+        const s = sim.heroes.setAutoSell(change);
+        shared.setSetting('lootAutoSell', { on: s.on, keep: [...s.keep] });
+      },
     });
+    if (shared.settings?.lootAutoSell) sim.heroes.setAutoSell(shared.settings.lootAutoSell);
     this.input = new Interaction({
       canvas, cam, sim, wallView: this.wallView, heroView: this.heroView, towerView: this.towerView, overlay,
       hud: this.hud, cameraCfg: CAMERA, signal: this.abort.signal,
@@ -121,8 +127,13 @@ export class Session {
     });
     ev.on('bossSpawned', (z) => fx.ring(z.x, z.z, 2.5, 0xd0453a, 1.2));
     // Hero build feedback: loot, lightning, quakes, landings, phoenix.
-    ev.on('lootDropped', ({ item, x, z }) => {
+    ev.on('lootDropped', ({ item, x, z, autoSold, gold }) => {
       const c = parseInt(this.sim.config.RARITY_INFO[item.rarity].color.slice(1), 16);
+      if (autoSold) {
+        // Auto-sold drops only get a small gold note, no fanfare.
+        floaters.spawn({ x, y: 1.6, z }, `${item.name} sold +${gold}g`, 'gold');
+        return;
+      }
       floaters.spawn({ x, y: 1.6, z }, item.name, 'cmdab');
       fx.ring(x, z, 1, c, 0.9, 1.25);
       effects.burst({ x, y: 0.8, z }, { count: 24, color: c, size: 0.08, speed: 1.2, up: 3, life: 1.2, spread: 0.3 });

@@ -7,6 +7,7 @@
 // A hero is either in reserve (wallId 0), walking to a block (moving > 0) or deployed.
 // h.wallIds lists the four walls of its block; h.wallId is the top-left one.
 import { heroStats } from './heroStats.js';
+import { RARITIES } from '../config/rarities.js';
 import { makeItem, heroMods, applyBuild, rollAbilityOffer } from './heroBuild.js';
 
 export class HeroSystem {
@@ -18,6 +19,7 @@ export class HeroSystem {
   constructor({ walls, zombies, economy, events, rng, types, rules, economyConfig, champion = null, cfg = null }) {
     Object.assign(this, { walls, zombies, economy, events, rng, types, rules, economyConfig, champion, cfg });
     this.usedNames = new Set();
+    this.autoSell = { on: false, keep: RARITIES.slice(1) };
     // Losing (or selling) any wall of the block drops the champion back into reserve.
     events.on('wallRemoved', ({ wall, cause }) => {
       for (const id of [...wall.heroes]) {
@@ -398,10 +400,46 @@ export class HeroSystem {
     this.applyStats(h);
   }
 
-  /** A dropped item goes into the hero's bag; a full bag sells it on the spot. */
+  /**
+   * Auto-sell for dropped items: when `on`, drops of a rarity not in `keep` are sold for gold
+   * the moment they drop. Returns the setting.
+   */
+  setAutoSell({ on, keep } = {}) {
+    const cur = this.autoSell;
+    this.autoSell = {
+      on: typeof on === 'boolean' ? on : cur.on,
+      keep: Array.isArray(keep) ? RARITIES.filter((r) => keep.includes(r)) : cur.keep,
+    };
+    return this.autoSell;
+  }
+
+  #autoSells(rarity) {
+    return this.autoSell.on && !this.autoSell.keep.includes(rarity);
+  }
+
+  /** Bag items auto-sell would sell now (empty while auto-sell is off). */
+  unkeptItems(heroId) {
+    const h = this.get(heroId);
+    return h ? h.bag.filter((item) => this.#autoSells(item.rarity)) : [];
+  }
+
+  /** Sells every bag item of a rarity not kept. @returns {{count:number, gold:number}} */
+  sellUnkept(heroId) {
+    const items = this.unkeptItems(heroId);
+    let gold = 0;
+    for (const item of items) gold += this.sellItem(heroId, item.uid);
+    return { count: items.length, gold };
+  }
+
+  /** A dropped item goes into the hero's bag; a full bag (or auto-sell) sells it on the spot. */
   addLoot(item) {
     const h = this.#heroes.values().next().value;
     if (!h || !item) return { stored: false, gold: 0 };
+    if (this.#autoSells(item.rarity)) {
+      const gold = this.#salvageValue(item);
+      this.economy.earn(gold, `autosell:${item.rarity}`);
+      return { stored: false, gold, autoSold: true };
+    }
     if (h.bag.length >= (this.cfg?.LOOT.bagSize ?? 12)) {
       const gold = this.#salvageValue(item);
       this.economy.earn(gold, `loot:${item.rarity}`);
