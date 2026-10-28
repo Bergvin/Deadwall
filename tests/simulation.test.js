@@ -168,7 +168,14 @@ test('waves: calling waves early stacks them; they count only once cleared', () 
   assert.ok(sim.waves.startNext(), 'next wave called during a fight');
   assert.ok(sim.waves.startNext());
   assert.equal(sim.waves.wave, 3);
-  assert.equal(sim.waves.remaining, waiting + size(2) + size(3), 'called waves join the queue');
+  assert.equal(sim.waves.remaining, waiting + size(2) + size(3), 'called waves are added');
+  // Called waves spawn in parallel: three waves running spawn about three times as fast.
+  let spawned = 0;
+  const count = () => spawned++;
+  sim.events.on('zombieSpawned', count);
+  sim.run(1);
+  assert.ok(spawned >= 3, `one spawn per running wave right away (got ${spawned})`);
+  sim.events.off('zombieSpawned', count);
   assert.equal(sim.waves.creditedWave, 1, 'called waves are not reached yet');
   assert.equal(sim.summary().wave, 1, 'dying now scores wave 1');
   // Clear all three: each pays its own bonus and the record moves to wave 3.

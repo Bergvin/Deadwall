@@ -1,7 +1,7 @@
 // Endless waves: a preparation phase with a countdown, then an active phase that spawns
 // the wave's enemies over time. The wave ends when everything has spawned and died.
-// The next wave can also be called early, during an active wave: its enemies join the
-// queue and all called waves clear together. A called wave only counts as reached once it
+// The next wave can also be called early, during an active wave: it starts spawning at once,
+// side by side with the waves already running, and all running waves clear together. A called wave only counts as reached once it
 // is cleared (`creditedWave`), so calling a hundred waves and dying scores the wave the
 // player was actually fighting.
 export const PHASE = { PREP: 'prep', ACTIVE: 'active' };
@@ -62,7 +62,9 @@ export class WaveSystem {
     this.creditedWave = 0;
     this.phase = PHASE.PREP;
     this.countdown = cfg.firstPrepTime;
-    this.queue = []; // {type, elite} still to spawn this wave
+    this.queue = []; // {type, elite, hp, rewardMult} still to spawn this wave
+    /** Waves called early: each spawns in parallel with its own timer {queue, timer}. */
+    this.called = [];
     this.spawnTimer = 0;
     this.hpMultiplier = 1;
     this.spawnIntervalMult = 1;
@@ -89,7 +91,7 @@ export class WaveSystem {
   }
 
   get remaining() {
-    return this.queue.length + this.zombies.aliveCount;
+    return this.queue.length + this.called.reduce((n, s) => n + s.queue.length, 0) + this.zombies.aliveCount;
   }
 
   /**
@@ -122,9 +124,9 @@ export class WaveSystem {
     }
     // The boss arrives two thirds of the way through the wave.
     if (comp.boss) queue.splice(Math.floor(queue.length / 3), 0, { type: comp.boss, elite: false, hp: bossHp, rewardMult: 1 });
-    // The queue spawns from its end: a called wave goes behind what is still waiting.
-    this.queue = early ? [...queue, ...this.queue] : queue;
-    if (!early) this.spawnTimer = 0;
+    // A called wave spawns right away, in parallel with the waves already running.
+    if (early) this.called.push({ queue, timer: 0 });
+    else { this.queue = queue; this.spawnTimer = 0; }
     this.sinceLastSpawn = 0;
     this.enraged = false;
     this.phase = PHASE.ACTIVE;
@@ -138,23 +140,36 @@ export class WaveSystem {
     return base * this.spawnIntervalMult;
   }
 
+  #spawn({ type, elite, hp, rewardMult }) {
+    const boss = this.zombies.types[type].boss;
+    const x = boss ? this.map.width / 2 + this.rng.range(-4, 4) : this.rng.range(0.5, this.map.width - 0.5);
+    const z = this.rng.range(0.3, this.map.spawnRows - 0.3);
+    this.zombies.spawn(type, x, z, hp, { elite, rewardMult });
+  }
+
   step(dt) {
     if (this.phase === PHASE.PREP) {
       this.countdown -= dt;
       if (this.countdown <= 0) this.startNext();
       return;
     }
-    if (this.queue.length) {
+    if (this.queue.length || this.called.length) {
       this.sinceLastSpawn = 0;
-      this.spawnTimer -= dt;
-      while (this.spawnTimer <= 0 && this.queue.length) {
-        this.spawnTimer += this.spawnInterval;
-        const { type, elite, hp, rewardMult } = this.queue.pop();
-        const boss = this.zombies.types[type].boss;
-        const x = boss ? this.map.width / 2 + this.rng.range(-4, 4) : this.rng.range(0.5, this.map.width - 0.5);
-        const z = this.rng.range(0.3, this.map.spawnRows - 0.3);
-        this.zombies.spawn(type, x, z, hp, { elite, rewardMult });
+      if (this.queue.length) {
+        this.spawnTimer -= dt;
+        while (this.spawnTimer <= 0 && this.queue.length) {
+          this.spawnTimer += this.spawnInterval;
+          this.#spawn(this.queue.pop());
+        }
       }
+      for (const s of this.called) {
+        s.timer -= dt;
+        while (s.timer <= 0 && s.queue.length) {
+          s.timer += this.spawnInterval;
+          this.#spawn(s.queue.pop());
+        }
+      }
+      this.called = this.called.filter((s) => s.queue.length);
       return;
     }
     // Stragglers that survive long after the last spawn become enraged (see WAVES.enrageAfter).
