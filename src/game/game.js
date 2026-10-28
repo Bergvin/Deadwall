@@ -10,6 +10,7 @@ import { GameLoop } from '../core/loop.js';
 import { loadSave, writeSave, recordRun } from '../core/save.js';
 import {
   runConfig, runXp, addXp, ensureOffer, choosePerk, equip, unequip, salvage, rollArtifactOffer, chooseArtifact, totalBonuses,
+  setAutoSalvage, salvageUnkept,
 } from '../core/commander.js';
 import { createStage } from '../render/setup.js';
 import { CameraController } from '../render/cameraController.js';
@@ -161,6 +162,14 @@ export class Game {
       salvage: (uid) => {
         if (ui.armedSalvage !== uid) { redraw({ armedSalvage: uid }); return; }
         salvage(cmd, uid);
+        writeSave(this.save);
+        redraw();
+      },
+      autoSalvage: act(setAutoSalvage),
+      // Clearing the stash of unkept rarities also takes two clicks.
+      salvageUnkept: () => {
+        if (!ui.armedSweep) { redraw({ armedSweep: true }); return; }
+        salvageUnkept(cmd);
         writeSave(this.save);
         redraw();
       },

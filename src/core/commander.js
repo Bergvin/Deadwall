@@ -6,7 +6,7 @@
 // A commander record lives in the save (see save.js) and looks like:
 //   { level, xp, pendingPicks, offer: [{id, rarity}] | null, perks: [{id, rarity}],
 //     artifacts: [{uid, id, rarity, level}], equipped: [uid], nextUid,
-//     artifactOffer: [{id, rarity}] | null }
+//     artifactOffer: [{id, rarity}] | null, autoSalvage: { on, keep: [rarity] } }
 // Functions that change a commander mutate the record they are given.
 import {
   RARITIES, RARITY_INFO, COMMANDER, PERKS, ARTIFACTS, ARTIFACT_ODDS, ABILITIES, ABILITY_POWER, BONUS_LABELS,
@@ -15,6 +15,7 @@ import {
 export function commanderDefaults() {
   return {
     level: 1, xp: 0, pendingPicks: 0, offer: null, perks: [], artifacts: [], equipped: [], nextUid: 1, artifactOffer: null,
+    autoSalvage: { on: false, keep: RARITIES.slice(1) },
   };
 }
 
@@ -168,6 +169,11 @@ export function mergeTarget(cmd, { id, rarity }) {
  */
 export function addArtifact(cmd, { id, rarity }) {
   if (!ARTIFACTS[id] || rarityIndex(rarity) < 0) return { artifact: null, merged: false, salvagedXp: 0 };
+  if (autoSalvages(cmd, rarity)) {
+    const xp = RARITY_INFO[rarity].salvageXp;
+    addXp(cmd, xp);
+    return { artifact: null, merged: false, salvagedXp: xp, auto: { id, rarity } };
+  }
   const target = mergeTarget(cmd, { id, rarity });
   if (target) {
     target.level++;
@@ -214,6 +220,38 @@ export function salvage(cmd, uid) {
   const [a] = cmd.artifacts.splice(i, 1);
   unequip(cmd, uid);
   return addXp(cmd, RARITY_INFO[a.rarity].salvageXp * a.level);
+}
+
+/** True when auto-salvage is on and the player does not keep this rarity. */
+export function autoSalvages(cmd, rarity) {
+  return !!cmd.autoSalvage?.on && !cmd.autoSalvage.keep.includes(rarity);
+}
+
+/** Changes the auto-salvage setting: `on` and/or the list of rarities to keep. */
+export function setAutoSalvage(cmd, { on, keep }) {
+  const cur = cmd.autoSalvage ?? { on: false, keep: RARITIES.slice(1) };
+  cmd.autoSalvage = {
+    on: typeof on === 'boolean' ? on : cur.on,
+    keep: Array.isArray(keep) ? RARITIES.filter((r) => keep.includes(r)) : cur.keep,
+  };
+  return cmd.autoSalvage;
+}
+
+/** Stash artifacts (never equipped ones) that auto-salvage would remove now. */
+export function unkeptArtifacts(cmd) {
+  return cmd.autoSalvage?.on
+    ? cmd.artifacts.filter((a) => !cmd.equipped.includes(a.uid) && autoSalvages(cmd, a.rarity)) : [];
+}
+
+/** Salvages every unkept stash artifact. @returns {{count:number, xp:number}} */
+export function salvageUnkept(cmd) {
+  const list = unkeptArtifacts(cmd);
+  let xp = 0;
+  for (const a of list) {
+    xp += RARITY_INFO[a.rarity].salvageXp * a.level;
+    salvage(cmd, a.uid);
+  }
+  return { count: list.length, xp };
 }
 
 // --- totals -------------------------------------------------------------------------

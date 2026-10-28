@@ -1,10 +1,10 @@
 // Commander screen: level and XP, level-up choices (perks and skills), the run-end artifact
 // choice, artifact slots and stash, and the totals. Pure DOM rendering; every change goes
 // through the handlers (which save and re-render).
-import { RARITY_INFO, PERKS, ARTIFACTS, COMMANDER, ABILITIES } from '../config/commander.js';
+import { RARITIES, RARITY_INFO, PERKS, ARTIFACTS, COMMANDER, ABILITIES } from '../config/commander.js';
 import {
   slotCount, perkValue, artifactBonuses, artifactAbility, describeBonuses, describeAbility, totalBonuses,
-  totalAbilities, rarityIndex, isSkill, mergeTarget,
+  totalAbilities, rarityIndex, isSkill, mergeTarget, unkeptArtifacts,
 } from '../core/commander.js';
 
 const h = (tag, cls, html) => {
@@ -79,6 +79,10 @@ export function artifactOfferCards(cmd, onPick) {
 /** Text describing what a pick did (merged, stored, salvaged). */
 export function pickedText(res) {
   if (!res) return '';
+  if (res.auto) {
+    return `<b style="color:${RARITY_INFO[res.auto.rarity].color}">${ARTIFACTS[res.auto.id].name}</b>`
+      + ` auto-salvaged for ${res.salvagedXp} XP.`;
+  }
   if (res.salvagedXp) return `Stash full: salvaged for ${res.salvagedXp} XP.`;
   const a = res.artifact;
   const name = `<b style="color:${RARITY_INFO[a.rarity].color}">${ARTIFACTS[a.id].name}</b>`;
@@ -86,10 +90,42 @@ export function pickedText(res) {
 }
 
 /**
+ * Auto-salvage setting: an on/off switch and one toggle per rarity to keep. New artifacts of
+ * an unkept rarity are salvaged for XP as soon as they are chosen; equipped ones are never
+ * touched. A button clears unkept artifacts already in the stash (two clicks).
+ */
+function autoSalvageBar(cmd, on, ui) {
+  const s = cmd.autoSalvage;
+  const bar = h('div', `autosalv${s.on ? ' on' : ''}`);
+  const toggle = h('label', 'astoggle', `<input type="checkbox"${s.on ? ' checked' : ''}> Auto-salvage`);
+  toggle.title = 'Artifacts of a rarity you do not keep are salvaged for XP as soon as you choose them';
+  toggle.querySelector('input').addEventListener('change', (e) => on.autoSalvage({ on: e.target.checked }));
+  bar.append(toggle, h('span', 'dim', 'Keep:'));
+  for (const r of RARITIES) {
+    const kept = s.keep.includes(r);
+    const chip = h('button', `keepchip${kept ? ' kept' : ''}`, RARITY_INFO[r].name);
+    chip.style.setProperty('--rc', RARITY_INFO[r].color);
+    chip.title = kept ? `Keeping ${RARITY_INFO[r].name} artifacts (click to salvage them instead)` : `Salvaging ${RARITY_INFO[r].name} artifacts (click to keep them)`;
+    chip.addEventListener('click', () => on.autoSalvage({ keep: kept ? s.keep.filter((k) => k !== r) : [...s.keep, r] }));
+    bar.append(chip);
+  }
+  const unkept = unkeptArtifacts(cmd);
+  if (unkept.length) {
+    const xp = unkept.reduce((sum, a) => sum + RARITY_INFO[a.rarity].salvageXp * a.level, 0);
+    const b = h('button', 'btn small salvnow', ui.armedSweep ? `Salvage ${unkept.length}? +${xp} XP` : `Salvage ${unkept.length} unkept`);
+    b.title = 'Salvage the stash artifacts of rarities you do not keep (equipped ones are safe)';
+    b.addEventListener('click', () => on.salvageUnkept());
+    bar.append(b);
+  }
+  return bar;
+}
+
+/**
  * @param {HTMLElement} root
  * @param {object} cmd commander record
  * @param {{choose: (i:number) => void, chooseArtifact: (i:number) => void, equip: (uid:number) => void,
- *          unequip: (uid:number) => void, salvage: (uid:number) => void, back: () => void, backLabel: string}} on
+ *          unequip: (uid:number) => void, salvage: (uid:number) => void, back: () => void, backLabel: string,
+ *          autoSalvage: (change: {on?: boolean, keep?: string[]}) => void, salvageUnkept: () => void}} on
  * @param {{armedSalvage?: number, picked?: object}} ui transient UI state
  */
 export function renderCommander(root, cmd, on, ui = {}) {
@@ -147,6 +183,7 @@ export function renderCommander(root, cmd, on, ui = {}) {
       || ARTIFACTS[a.id].name.localeCompare(ARTIFACTS[b.id].name));
   const st = h('div', 'cmdsec');
   st.append(h('h3', '', `Stash <span class="dim">${stash.length}</span>`));
+  st.append(autoSalvageBar(cmd, on, ui));
   if (!stash.length) {
     st.append(h('div', 'dim small', 'Every finished run lets you choose one of three artifacts. The further you get, the better they are. Two identical artifacts merge into a higher level.'));
   } else {

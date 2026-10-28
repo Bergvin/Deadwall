@@ -349,6 +349,12 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 .artifact .abon { color: #cfc4ad; font-size: 11px; margin-top: 4px; line-height: 1.4; }
 .artifact .salvage { position: absolute; top: 3px; right: 3px; font-size: 10px; padding: 1px 5px; border-radius: 3px; cursor: pointer; color: var(--muted); background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border); }
 .artifact .salvage:hover { color: var(--red); border-color: var(--red); }
+.autosalv { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; font-size: 12px; }
+.autosalv .astoggle { display: flex; align-items: center; gap: 4px; cursor: pointer; margin-right: 4px; }
+.autosalv .keepchip { font-size: 11px; padding: 2px 7px; border-radius: 10px; cursor: pointer; background: transparent; color: var(--muted); border: 1px solid var(--border); text-decoration: line-through; }
+.autosalv .keepchip.kept { color: var(--rc); border-color: var(--rc); text-decoration: none; }
+.autosalv:not(.on) .keepchip { opacity: 0.5; }
+.autosalv .salvnow { margin-left: auto; }
 .totals { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
 .totals span { color: var(--green); }
 .perklist { margin-top: 8px; font-size: 12px; line-height: 1.6; }

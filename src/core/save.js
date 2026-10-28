@@ -53,6 +53,10 @@ export function sanitizeCommander(raw) {
     equipped,
     nextUid: Math.max(nonNegInt(raw.nextUid), ...artifacts.map((a) => a.uid + 1), 1),
     artifactOffer,
+    autoSalvage: {
+      on: bool(raw.autoSalvage?.on, d.autoSalvage.on),
+      keep: Array.isArray(raw.autoSalvage?.keep) ? RARITIES.filter((r) => raw.autoSalvage.keep.includes(r)) : d.autoSalvage.keep,
+    },
   };
 }
 
