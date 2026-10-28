@@ -127,6 +127,9 @@ export const PATHING = {
   wallCostPerHp: 0.02,
 };
 
+/** Game speed buttons in the top bar (multipliers of the simulation clock). */
+export const GAME_SPEEDS = [1, 3, 5];
+
 export const CAMERA = {
   pitchDeg: 55,
   yawDeg: 0,

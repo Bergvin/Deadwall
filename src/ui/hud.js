@@ -8,6 +8,7 @@ import './hud.css';
 import { PHASE } from '../core/waves.js';
 import { heroStats, abilityList } from '../core/heroStats.js';
 import { HeroRoster } from './roster.js';
+import { GAME_SPEEDS } from '../config/game.js';
 
 const h = (tag, cls, html) => {
   const el = document.createElement(tag);
@@ -116,7 +117,7 @@ export class Hud {
     this.muteBtn.title = 'Sound on/off';
     this.muteBtn.addEventListener('click', () => this.actions.toggleMute());
     controls.append(this.waveBtn, this.pauseBtn, this.muteBtn);
-    this.speedBtns = [1, 2, 3].map((s) => {
+    this.speedBtns = GAME_SPEEDS.map((s) => {
       const b = h('button', 'btn icon speed', `${s}×`);
       b.title = `Game speed ${s}×`;
       b.addEventListener('click', () => this.actions.setSpeed(s));
@@ -563,7 +564,7 @@ export class Hud {
     const paused = this.actions.isPaused();
     this.pauseBtn.textContent = paused ? '▶' : '❚❚';
     this.pauseBtn.classList.toggle('active', paused);
-    this.speedBtns.forEach((b, i) => b.classList.toggle('active', this.actions.getSpeed() === i + 1));
+    this.speedBtns.forEach((b, i) => b.classList.toggle('active', this.actions.getSpeed() === GAME_SPEEDS[i]));
     const ml = this.actions.isMuted() ? 'Sound off' : 'Sound';
     if (this.muteBtn.textContent !== ml) this.muteBtn.textContent = ml;
     this.muteBtn.classList.toggle('active', this.actions.isMuted());
