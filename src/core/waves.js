@@ -54,9 +54,9 @@ export function rollVariant(n, variants, table, previous, rnd) {
 }
 
 export class WaveSystem {
-  /** @param {{zombies, economy, events, rng, cfg, table, elite, map, variants?}} deps */
-  constructor({ zombies, economy, events, rng, cfg, table, elite, map, variants = null }) {
-    Object.assign(this, { zombies, economy, events, rng, cfg, table, elite, map, variants });
+  /** @param {{zombies, economy, events, rng, cfg, table, elite, paths, variants?, hpMult?}} deps */
+  constructor({ zombies, economy, events, rng, cfg, table, elite, paths, variants = null, hpMult = 1 }) {
+    Object.assign(this, { zombies, economy, events, rng, cfg, table, elite, paths, variants, mapHpMult: hpMult });
     this.wave = 0; // last started wave
     /** Highest wave that counts for records: started normally, or called early and cleared. */
     this.creditedWave = 0;
@@ -87,7 +87,10 @@ export class WaveSystem {
   /** Composition of the upcoming wave (for the HUD preview). */
   preview(n = this.nextWave) {
     const key = n === this.nextWave ? this.nextVariant : 'normal';
-    return { ...waveComposition(n, this.table, this.elite, this.variants?.types[key]), variant: key };
+    const comp = waveComposition(n, this.table, this.elite, this.variants?.types[key]);
+    // The map's own difficulty scales every enemy.
+    comp.hpMultiplier *= this.mapHpMult;
+    return { ...comp, variant: key, roads: this.activeRoads(n).map((p) => p.id) };
   }
 
   get remaining() {
@@ -140,11 +143,18 @@ export class WaveSystem {
     return base * this.spawnIntervalMult;
   }
 
+  /** Roads the dead use in wave n (some roads open later). */
+  activeRoads(n = this.wave) {
+    const open = this.paths.filter((p) => n >= p.from);
+    return open.length ? open : this.paths.slice(0, 1);
+  }
+
   #spawn({ type, elite, hp, rewardMult }) {
-    const boss = this.zombies.types[type].boss;
-    const x = boss ? this.map.width / 2 + this.rng.range(-4, 4) : this.rng.range(0.5, this.map.width - 0.5);
-    const z = this.rng.range(0.3, this.map.spawnRows - 0.3);
-    this.zombies.spawn(type, x, z, hp, { elite, rewardMult });
+    const roads = this.activeRoads();
+    let r = this.rng.next() * roads.reduce((s, p) => s + p.weight, 0);
+    let road = roads[roads.length - 1];
+    for (const p of roads) if ((r -= p.weight) < 0) { road = p; break; }
+    this.zombies.spawn(type, road.id, hp, { elite, rewardMult });
   }
 
   step(dt) {

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeWorld } from './helpers.js';
-import { DIR } from '../src/core/walls.js';
-import { MAP, WALLS, ECONOMY } from '../src/config/game.js';
+import { DIR } from '../../src-classic/core/walls.js';
+import { MAP, WALLS, ECONOMY } from '../../src-classic/config/game.js';
 
 const cost = WALLS.stone.cost;
 

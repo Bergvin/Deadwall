@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lineCells } from '../src/input/interaction.js';
-import { pieceFor } from '../src/render/wallView.js';
-import { DIR } from '../src/core/walls.js';
+import { lineCells } from '../../src-classic/input/interaction.js';
+import { pieceFor } from '../../src-classic/render/wallView.js';
+import { DIR } from '../../src-classic/core/walls.js';
 
 test('lineCells is 4-connected and inclusive', () => {
   for (const [a, b] of [[{ x: 0, y: 0 }, { x: 5, y: 3 }], [{ x: 4, y: 4 }, { x: 0, y: 0 }], [{ x: 2, y: 2 }, { x: 2, y: 7 }]]) {
@@ -40,7 +40,7 @@ test('pieceFor picks straight, corner and junction pieces', () => {
 });
 
 test('axisLock keeps drags on the dominant axis', async () => {
-  const { axisLock } = await import('../src/input/interaction.js');
+  const { axisLock } = await import('../../src-classic/input/interaction.js');
   const a = { x: 10, y: 10 };
   assert.deepEqual(axisLock(a, { x: 4, y: 12 }), { x: 4, y: 10 }, 'mostly left -> horizontal');
   assert.deepEqual(axisLock(a, { x: 11, y: 3 }), { x: 10, y: 3 }, 'mostly up -> vertical');

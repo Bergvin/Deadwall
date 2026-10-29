@@ -1,13 +1,12 @@
-// Composition root and state machine (menu -> playing -> game over). Owns everything that
-// persists between runs (renderer, camera, models, scenery, shared renderers) and creates
-// a fresh Session for every run.
+// Composition root and state machine (menu -> map select -> playing -> game over). Owns
+// everything that persists between runs (renderer, camera, models, shared renderers) and
+// creates a fresh Session for every run (which builds that map's scenery).
 import * as THREE from 'three';
 import * as CFG from '../config/game.js';
-import { MAP, CAMERA, ZOMBIES, HEROES, CHAMPION } from '../config/game.js';
+import { MAP_RULES as MAP, CAMERA, ZOMBIES, MAPS } from '../config/game.js';
 import { MODELS } from '../config/assets.js';
-import { createMapGrid } from '../core/grid.js';
 import { GameLoop } from '../core/loop.js';
-import { loadSave, writeSave, recordRun } from '../core/save.js';
+import { loadSave, writeSave, recordRun, isMapUnlocked } from '../core/save.js';
 import {
   runConfig, runXp, addXp, ensureOffer, choosePerk, equip, unequip, salvage, rollArtifactOffer, chooseArtifact, totalBonuses,
   setAutoSalvage, salvageUnkept,
@@ -15,14 +14,10 @@ import {
 import { createStage } from '../render/setup.js';
 import { CameraController } from '../render/cameraController.js';
 import { AssetLibrary } from '../render/assets.js';
-import { buildWorld } from '../render/worldView.js';
-import { Overlay } from '../render/overlay.js';
 import { ZombieView } from '../render/zombieView.js';
 import { ProjectileView } from '../render/projectileView.js';
 import { Effects } from '../render/effects.js';
 import { Fx } from '../render/fx.js';
-import { Ambience } from '../render/ambience.js';
-import { BreachView } from '../render/breachView.js';
 import { Sfx } from '../audio/sfx.js';
 import { HealthBars } from '../render/healthBars.js';
 import { FloatingText } from '../ui/floatingText.js';
@@ -37,27 +32,21 @@ export class Game {
     this.container = container;
     this.state = STATE.MENU;
     this.save = loadSave();
-    const { renderer, scene, center } = createStage(container, MAP, CAMERA.distance);
+    const { renderer, scene, center, ground } = createStage(container, MAP, CAMERA.distance);
     this.renderer = renderer;
     this.scene = scene;
+    this.ground = ground;
     this.cam = new CameraController(renderer.domElement, CAMERA,
       { minX: 0, maxX: MAP.width, minZ: 2, maxZ: MAP.height }, new THREE.Vector3(center.x, 0, center.z + 1));
 
     this.assets = new AssetLibrary();
     await this.assets.load(MODELS);
-    // Scenery only depends on the static map layout, so it is built once.
-    const layout = createMapGrid(MAP);
-    const world = buildWorld(scene, this.assets, layout, MAP);
-    this.overlay = new Overlay(scene, layout, this.assets);
     this.zombieView = new ZombieView(scene, this.assets, ZOMBIES);
     this.projectileView = new ProjectileView(scene);
     this.effects = new Effects(scene);
     this.fx = new Fx(scene);
     this.bars = new HealthBars(scene);
     this.floaters = new FloatingText(document.body);
-    this.gateNode = world.gate;
-    this.ambience = new Ambience(scene, world, MAP);
-    this.breaches = new BreachView(scene, this.assets);
     this.sfx = new Sfx(this.save.settings);
 
     this.loop = new GameLoop({
@@ -65,7 +54,10 @@ export class Game {
       onFrame: (realDt) => this.frame(realDt),
     });
     this.screens = new Screens(document.body, {
-      onNewGame: () => this.chooseChampion(),
+      onNewGame: () => this.chooseMap(),
+      onPlayMap: (id) => this.newGame(undefined, id),
+      onRetry: () => this.newGame(undefined, this.lastMap),
+      onClassic: () => { location.href = './classic.html'; },
       onMenu: () => this.toMenu(),
       onCommander: () => this.openCommander(),
       onChooseArtifact: (i) => this.pickArtifact(i),
@@ -73,6 +65,7 @@ export class Game {
       getSettings: () => this.save.settings,
       setSetting: (key, value) => this.setSetting(key, value),
     });
+    this.screens.mapName = (id) => MAPS.find((m) => m.id === id)?.name ?? id;
     this.applySettings();
 
     addEventListener('resize', () => {
@@ -93,16 +86,16 @@ export class Game {
     this.session = null;
   }
 
-  /** New Game first asks for the run's champion. */
-  chooseChampion() {
+  /** New Game first asks which map to play. */
+  chooseMap() {
     this.#endSession();
     this.screens.hideGameOver();
     this.screens.setPaused(false);
     this.state = STATE.MENU;
-    this.screens.showHeroSelect(HEROES, CHAMPION, (type) => this.newGame(undefined, type), { styles: CFG.WEAPON_STYLES, names: CFG.ITEM_NAMES });
+    this.screens.showMapSelect(MAPS, this.save, (m) => isMapUnlocked(this.save, m));
   }
 
-  newGame(seed, heroType = 'archer') {
+  newGame(seed, mapId = this.lastMap ?? MAPS[0].id) {
     this.#endSession();
     this.screens.hideMenu();
     this.screens.hideGameOver();
@@ -110,11 +103,12 @@ export class Game {
     this.loop.paused = false;
     this.loop.speed = 1;
     this.screens.setPaused(false);
+    this.lastMap = mapId;
     this.session = new Session({
-      scene: this.scene, canvas: this.renderer.domElement, cam: this.cam, assets: this.assets,
-      overlay: this.overlay, zombieView: this.zombieView, projectileView: this.projectileView,
-      effects: this.effects, fx: this.fx, bars: this.bars, sfx: this.sfx, breaches: this.breaches, floaters: this.floaters, gateNode: this.gateNode,
-      loop: this.loop, seed, heroType, togglePause: () => this.togglePause(),
+      scene: this.scene, canvas: this.renderer.domElement, cam: this.cam, assets: this.assets, ground: this.ground,
+      zombieView: this.zombieView, projectileView: this.projectileView,
+      effects: this.effects, fx: this.fx, bars: this.bars, sfx: this.sfx, floaters: this.floaters,
+      loop: this.loop, seed, mapId, togglePause: () => this.togglePause(),
       // Every run plays with the Commander's perks, skills and equipped artifacts.
       config: runConfig(CFG, this.save.commander),
       settings: this.save.settings, setSetting: (k, v) => this.setSetting(k, v),
@@ -218,10 +212,6 @@ export class Game {
         for (const m of [].concat(o.material ?? [])) m.needsUpdate = true;
       });
     }
-    if (this.session) {
-      this.session.showPath = s.showPath;
-      this.session.pathDirty = true;
-    }
   }
 
   togglePause() {
@@ -232,7 +222,6 @@ export class Game {
 
   frame(realDt) {
     this.cam.update(realDt);
-    this.ambience.update(realDt);
     this.session?.frame(realDt);
     this.renderer.render(this.scene, this.cam.camera);
   }

@@ -34,7 +34,7 @@ export class Screens {
     slider.addEventListener('input', () => this.handlers.setSetting('volume', slider.value / 100));
     vol.append(slider);
     box.append(vol);
-    for (const [key, label] of [['muted', 'Mute sound'], ['shadows', 'Shadows'], ['showPath', 'Show zombie route (P)']]) {
+    for (const [key, label] of [['muted', 'Mute sound'], ['shadows', 'Shadows']]) {
       const row = h('label', 'setting check');
       const cb = h('input');
       cb.type = 'checkbox';
@@ -51,11 +51,15 @@ export class Screens {
     this.menu.hidden = false;
     this.menu.innerHTML = '';
     const box = h('div', 'box',
-      '<h1>DEAD<span>WALL</span></h1><div class="tagline">Build the walls. Hold the gate. Survive the horde.</div>');
+      '<h1>DEAD<span>WALL</span></h1><div class="tagline">Guard the house. Keep the towers firing. Survive the horde.</div>');
     const start = h('button', 'btn big primary', 'New Game');
     start.addEventListener('click', () => this.handlers.onNewGame());
     box.append(start);
     box.append(this.#commanderButton(save.commander));
+    const classic = h('button', 'btn big classicbtn', 'DW Classic');
+    classic.title = 'The original DeadWall: walls, a champion hero and elemental towers on the walls';
+    classic.addEventListener('click', () => this.handlers.onClassic());
+    box.append(classic);
     box.append(h('div', 'records',
       `<span>Best wave</span><b>${save.bestWave || '—'}</b>`
       + `<span>High score</span><b>${save.highScore || '—'}</b>`
@@ -63,8 +67,8 @@ export class Screens {
       + `<span>Runs</span><b>${save.runs}</b>`));
     box.append(this.#settingsBlock());
     box.append(h('div', 'controlsHelp',
-      'Build walls to steer the horde · Raise elemental towers on your walls · Your champion holds a 2×2 block<br>'
-      + 'Zombies smash walls in their way · If the gate falls, the run is over'));
+      'Few towers, every one counts · Upgrade them, pick a specialisation at level 5<br>'
+      + 'Your runner carries the ammo · His spells boost the towers around him · Protect the house'));
     this.menu.append(box);
     start.focus();
   }
@@ -74,31 +78,36 @@ export class Screens {
   }
 
   /**
-   * Run start: pick the hero's starting weapon (a common one). The weapon decides how the
-   * hero attacks; abilities come from level-ups and better weapons drop during the run.
-   * @param {Record<string, object>} heroes  HEROES config (weapon styles' base stats)
-   * @param {{hpMult:number, damageMult:number, rangeAdd:number}} champion
-   * @param {(type: string) => void} onPick
-   * @param {{styles: object, names: object}} weapons WEAPON_STYLES and ITEM_NAMES
+   * Map choice. Maps unlock in order (reach their wave on the previous map).
+   * @param {object[]} maps MAPS config @param {object} save @param {(m) => boolean} unlocked
    */
-  showHeroSelect(heroes, champion, onPick, weapons) {
+  showMapSelect(maps, save, unlocked) {
     this.over.hidden = true;
     this.cmd.hidden = true;
     this.menu.hidden = false;
     this.menu.innerHTML = '';
-    const box = h('div', 'box wide',
-      '<h2>Choose your starting weapon</h2><div class="tagline">Your hero starts with nothing but this. Every level brings a new ability to choose; better weapons and gear drop from elites and bosses.</div>');
-    const grid = h('div', 'champions');
-    for (const [key, st] of Object.entries(weapons.styles)) {
-      const t = heroes[key];
-      const card = h('button', 'champion',
-        `<div class="portrait c-${key}">${st.icon}</div><div class="cname">${weapons.names[key][0]}</div>`
-        + `<div class="crole">${st.weapon} · ${st.delivery === 'melee' ? 'melee' : 'ranged'} · ${t.damageType}</div>`
-        + `<div class="cstats">DMG ${Math.round(t.damage * champion.damageMult)} · ${(1 / t.attackInterval).toFixed(1)}/s · RNG ${t.range + champion.rangeAdd}</div>`
-        + `<div class="cnote">${t.description}</div>`);
-      card.addEventListener('click', () => onPick(key));
+    const box = h('div', 'box wide', '<h2>Choose a battlefield</h2><div class="tagline">Every map is its own puzzle. Reach wave 10 to open the next one.</div>');
+    const grid = h('div', 'maps');
+    maps.forEach((m, i) => {
+      const open = unlocked(m);
+      const rec = save.maps?.[m.id];
+      const mods = [];
+      if (m.mods?.enemyHpMult > 1) mods.push(`enemies +${Math.round((m.mods.enemyHpMult - 1) * 100)}% health`);
+      if (m.mods?.enemySpeedMult > 1) mods.push(`enemies +${Math.round((m.mods.enemySpeedMult - 1) * 100)}% speed`);
+      if (m.roads.length > 1) mods.push(`${m.roads.length} roads`);
+      const card = h('button', `mapcard${open ? '' : ' locked'}`,
+        `<div class="mnum">${i + 1}</div><div class="mname">${m.name}</div>`
+        + '<canvas class="mthumb" width="150" height="120"></canvas>'
+        + `<div class="mdesc">${m.description}</div>`
+        + (mods.length ? `<div class="mmods">${mods.join(' · ')}</div>` : '')
+        + (open
+          ? `<div class="mbest">${rec?.bestWave ? `Best wave <b>${rec.bestWave}</b>` : 'Not played yet'}</div>`
+          : `<div class="mlock">🔒 Reach wave ${m.unlock.wave} on ${maps.find((x) => x.id === m.unlock.map)?.name}</div>`));
+      drawThumb(card.querySelector('canvas'), m);
+      card.disabled = !open;
+      if (open) card.addEventListener('click', () => this.handlers.onPlayMap(m.id));
       grid.append(card);
-    }
+    });
     const back = h('button', 'btn big', 'Back');
     back.addEventListener('click', () => this.handlers.onMenu());
     box.append(grid, back);
@@ -138,35 +147,41 @@ export class Screens {
     this.over.hidden = false;
     this.over.innerHTML = '';
     const offer = save.commander.artifactOffer?.length;
-    const box = h('div', `box${offer ? ' wide' : ''}`, '<h2>The Gate Has Fallen</h2><div class="tagline">The dead pour into the fortress.</div>');
+    const best = save.maps?.[summary.map]?.bestWave ?? 0;
+    const box = h('div', `box${offer ? ' wide' : ''}`, '<h2>The House Has Fallen</h2><div class="tagline">The dead are inside.</div>');
     if (rec.newBestWave || rec.newHighScore) {
-      box.append(h('div', 'newrec', rec.newHighScore ? 'New high score!' : 'New best wave!'));
+      box.append(h('div', 'newrec', rec.newBestWave ? 'New best wave on this map!' : 'New high score!'));
+    }
+    for (const id of rec.unlocked ?? []) {
+      box.append(h('div', 'newrec unlock', `New battlefield unlocked: ${this.mapName?.(id) ?? id}!`));
     }
     box.append(h('div', 'records',
       `<span>Wave reached</span><b>${summary.wave}</b>`
+      + `<span>Best on this map</span><b>${best}</b>`
       + `<span>Score</span><b>${summary.score}</b>`
       + `<span>Zombies slain</span><b>${summary.kills}</b>`
-      + `<span>Waves cleared</span><b>${summary.wavesCleared}</b>`
-      + `<span>Walls built / lost</span><b>${summary.wallsBuilt} / ${summary.wallsLost}</b>`
-      + `<span>Heroes recruited</span><b>${summary.heroes}</b>`
+      + `<span>Towers built</span><b>${summary.towersBuilt}</b>`
+      + `<span>Runner level</span><b>${summary.runnerLevel}</b>`
+      + `<span>Crates delivered</span><b>${summary.refills}</b>`
+      + `<span>Times knocked over</span><b>${summary.bonks}</b>`
       + `<span>Gold earned</span><b>${summary.goldEarned}</b>`
-      + `<span>Time survived</span><b>${fmtTime(summary.time)}</b>`
-      + `<span>Best wave</span><b>${save.bestWave}</b>`
-      + `<span>High score</span><b>${save.highScore}</b>`));
+      + `<span>Time survived</span><b>${fmtTime(summary.time)}</b>`));
     const loot = h('div', 'runloot',
       `<div class="xpgain">+${progress.xp} commander XP${progress.levels ? ` · <b>Level up${progress.levels > 1 ? ` ×${progress.levels}` : ''}!</b>` : ''}</div>`
       + (progress.picked ? `<div class="pickedmsg">${pickedText(progress.picked)}</div>` : ''));
     box.append(loot);
     if (offer) {
-      box.append(h('h3', 'offertitle', `Choose an artifact <span class="dim">· the further you get, the better the odds</span>`));
+      box.append(h('h3', 'offertitle', 'Choose an artifact <span class="dim">· the further you get, the better the odds</span>'));
       box.append(artifactOfferCards(save.commander, (i) => this.handlers.onChooseArtifact(i)));
     }
     box.append(this.#commanderButton(save.commander));
     const again = h('button', 'btn big primary', 'Play Again');
-    again.addEventListener('click', () => this.handlers.onNewGame());
+    again.addEventListener('click', () => this.handlers.onRetry());
+    const maps = h('button', 'btn big', 'Choose Map');
+    maps.addEventListener('click', () => this.handlers.onNewGame());
     const menu = h('button', 'btn big', 'Main Menu');
     menu.addEventListener('click', () => this.handlers.onMenu());
-    box.append(again, menu);
+    box.append(again, maps, menu);
     this.over.append(box);
   }
 
@@ -185,7 +200,7 @@ export class Screens {
     const restart = h('button', 'btn', 'Restart run');
     restart.addEventListener('click', () => {
       // Confirm so a run is never thrown away by one stray click.
-      if (restart.dataset.armed) { this.handlers.onNewGame(); return; }
+      if (restart.dataset.armed) { this.handlers.onRetry(); return; }
       restart.dataset.armed = '1';
       restart.textContent = 'Click again to restart';
     });
@@ -198,4 +213,34 @@ export class Screens {
     row.append(resume, restart, menu);
     this.pause.append(row, this.#settingsBlock());
   }
+}
+
+/** Small top-down sketch of a map: ground, water, rocks, roads (red dot = entrance), house. */
+function drawThumb(cv, m) {
+  const g = cv.getContext('2d');
+  const W = 30, H = 24, sx = cv.width / W, sy = cv.height / H;
+  g.fillStyle = '#2b2922';
+  g.fillRect(0, 0, cv.width, cv.height);
+  g.fillStyle = '#1e3a4e';
+  for (const [x0, y0, x1, y1] of m.water ?? []) g.fillRect(x0 * sx, y0 * sy, (x1 - x0 + 1) * sx, (y1 - y0 + 1) * sy);
+  g.fillStyle = '#5a5248';
+  for (const [x, y] of m.blocked ?? []) g.fillRect(x * sx + 1, y * sy + 1, sx - 2, sy - 2);
+  g.lineJoin = 'round';
+  g.lineCap = 'round';
+  for (const r of m.roads) {
+    g.strokeStyle = '#9a7a52';
+    g.lineWidth = 1.8 * sx;
+    g.beginPath();
+    r.points.forEach(([x, z], k) => (k ? g.lineTo(x * sx, z * sy) : g.moveTo(x * sx, z * sy)));
+    g.stroke();
+  }
+  for (const r of m.roads) {
+    const [x0, z0] = r.points[0];
+    g.fillStyle = '#c0392b';
+    g.beginPath();
+    g.arc(Math.min(W - 0.6, Math.max(0.6, x0)) * sx, Math.min(H - 0.6, Math.max(0.6, z0)) * sy, 0.7 * sx, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.fillStyle = '#e8b64c';
+  g.fillRect((m.house.x - 1) * sx, (m.house.z - 1) * sy, 2 * sx, 2 * sy);
 }

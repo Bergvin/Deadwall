@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Simulation } from '../src/core/simulation.js';
-import { TOWERS, TOWER_RULES } from '../src/config/game.js';
+import { Simulation } from '../../src-classic/core/simulation.js';
+import { TOWERS, TOWER_RULES } from '../../src-classic/config/game.js';
 
 const rich = (seed = 1) => {
   const sim = new Simulation({ seed });

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Simulation } from '../src/core/simulation.js';
-import { HEROES, HERO_RULES, HERO_ACTIVES, HERO_ABILITIES } from '../src/config/game.js';
+import { Simulation } from '../../src-classic/core/simulation.js';
+import { HEROES, HERO_RULES, HERO_ACTIVES, HERO_ABILITIES } from '../../src-classic/config/game.js';
 import { buildBlock } from './helpers.js';
 
 const DT = 1 / 60;

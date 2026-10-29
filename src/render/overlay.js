@@ -1,4 +1,5 @@
-// Tactical overlays: build grid, hover/selection markers, placement ghost and path preview.
+// Tactical overlays: build grid, hover/selection markers, placement ghost, range rings.
+// One Overlay per run (each map has its own buildable ground); dispose() removes it.
 import * as THREE from 'three';
 import { TERRAIN } from '../core/grid.js';
 
@@ -83,7 +84,7 @@ export class Overlay {
 
   #makeCellBox(color) {
     const box = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(1.04, 1.45, 1.04)),
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1.04, 2.2, 1.04)),
       new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true }),
     );
     box.renderOrder = 11;
@@ -117,7 +118,7 @@ export class Overlay {
     this.selection.visible = !!cell;
     if (!cell) return;
     const s = cell.size ?? 1;
-    this.selection.position.set(cell.x + s / 2, 0.725, cell.y + s / 2);
+    this.selection.position.set(cell.x + s / 2, 1.1, cell.y + s / 2);
     this.selection.scale.set(s, 1, s);
   }
 
@@ -147,26 +148,35 @@ export class Overlay {
     }
   }
 
-  /** Hero-slot markers on wall tops while deploying. @param {{x,y,free:boolean}[]} items */
-  setHeroSlots(items) {
-    this.slots ??= [];
-    items.forEach((it, i) => {
-      if (!this.slots[i]) {
-        const m = new THREE.Mesh(
-          new THREE.RingGeometry(0.22, 0.32, 20),
-          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, depthTest: false }),
-        );
-        m.rotation.x = -Math.PI / 2;
-        m.renderOrder = 12;
-        this.root.add(m);
-        this.slots[i] = m;
-      }
-      const m = this.slots[i];
-      m.visible = true;
-      m.material.color.set(it.free ? COLORS.valid : COLORS.invalid);
-      m.position.set(it.x + 0.5, 1.22, it.y + 0.5);
-    });
-    for (let i = items.length; i < this.slots.length; i++) this.slots[i].visible = false;
+  /**
+   * Named range rings on the ground (tower range, spell reach). Pass null to hide one.
+   * @param {string} name @param {{x:number, z:number, radius:number, color?:number, opacity?:number}|null} r
+   */
+  setRing(name, r) {
+    this.rings ??= {};
+    let m = this.rings[name];
+    if (!m) {
+      const ring = new THREE.RingGeometry(0.96, 1, 72);
+      ring.rotateX(-Math.PI / 2);
+      const disc = new THREE.CircleGeometry(1, 72);
+      disc.rotateX(-Math.PI / 2);
+      m = new THREE.Group();
+      m.add(new THREE.Mesh(ring, new THREE.MeshBasicMaterial({ transparent: true, depthTest: false })));
+      m.add(new THREE.Mesh(disc, new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false })));
+      m.renderOrder = 13;
+      m.children.forEach((c) => { c.renderOrder = 13; });
+      this.root.add(m);
+      this.rings[name] = m;
+    }
+    m.visible = !!r;
+    if (!r) return;
+    const color = r.color ?? 0xf0e6c8;
+    m.position.set(r.x, 0.06, r.z);
+    m.scale.set(r.radius, 1, r.radius);
+    m.children[0].material.color.set(color);
+    m.children[0].material.opacity = r.opacity ?? 0.7;
+    m.children[1].material.color.set(color);
+    m.children[1].material.opacity = (r.opacity ?? 0.7) * 0.12;
   }
 
   /**
@@ -206,11 +216,15 @@ export class Overlay {
   reset() {
     this.setAbilityPreview(null);
     this.setGhosts([]);
-    this.setHeroSlots([]);
+    for (const k of Object.keys(this.rings ?? {})) this.setRing(k, null);
     this.setHover(null);
     this.setSelection(null);
     this.setGridVisible(false);
     this.setPath(null);
+  }
+
+  dispose() {
+    this.root.parent?.remove(this.root);
   }
 
   /** Draws a path of cells as a dashed line (null hides it). */

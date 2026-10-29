@@ -7,7 +7,7 @@ import {
   equip, unequip, salvage, slotCount, totalBonuses, totalAbilities, applyBonuses, runConfig, perkValue,
   artifactOdds, rollArtifactOffer, artifactAbility, artifactBonuses, levelFactor, isSkill,
 } from '../src/core/commander.js';
-import { sanitize, recordRun } from '../src/core/save.js';
+import { sanitize, recordRun, isMapUnlocked } from '../src/core/save.js';
 import { createRng } from '../src/core/rng.js';
 import { Simulation } from '../src/core/simulation.js';
 
@@ -84,21 +84,21 @@ test('artifacts: auto-equip into free slots, slot limit, salvage gives XP', () =
 
 test('artifacts: identical ones merge into higher levels; other rarities stay separate', () => {
   const cmd = commanderDefaults();
-  const first = addArtifact(cmd, { id: 'mortar', rarity: 'rare' });
+  const first = addArtifact(cmd, { id: 'hearth', rarity: 'rare' });
   assert.equal(first.artifact.level, 1);
-  const second = addArtifact(cmd, { id: 'mortar', rarity: 'rare' });
+  const second = addArtifact(cmd, { id: 'hearth', rarity: 'rare' });
   assert.ok(second.merged);
   assert.equal(second.artifact.uid, first.artifact.uid);
   assert.equal(first.artifact.level, 2);
-  assert.equal(addArtifact(cmd, { id: 'mortar', rarity: 'uncommon' }).merged, false, 'a different rarity is a different artifact');
-  for (let i = 0; i < 10; i++) addArtifact(cmd, { id: 'mortar', rarity: 'rare' });
-  const rares = cmd.artifacts.filter((a) => a.id === 'mortar' && a.rarity === 'rare');
+  assert.equal(addArtifact(cmd, { id: 'hearth', rarity: 'uncommon' }).merged, false, 'a different rarity is a different artifact');
+  for (let i = 0; i < 10; i++) addArtifact(cmd, { id: 'hearth', rarity: 'rare' });
+  const rares = cmd.artifacts.filter((a) => a.id === 'hearth' && a.rarity === 'rare');
   assert.equal(rares[0].level, COMMANDER.artifactMaxLevel, 'capped at max level');
   assert.ok(rares.length > 1, 'past max level a new copy starts');
   // Levels make it stronger: bonuses and ability power.
-  const b1 = artifactBonuses('mortar', 'rare', 1).wallHpPct, b3 = artifactBonuses('mortar', 'rare', 3).wallHpPct;
+  const b1 = artifactBonuses('hearth', 'rare', 1).houseHpPct, b3 = artifactBonuses('hearth', 'rare', 3).houseHpPct;
   assert.ok(Math.abs(b3 - b1 * levelFactor(3)) < 0.02);
-  assert.ok(artifactAbility('mortar', 'rare', 3).power > artifactAbility('mortar', 'rare', 1).power);
+  assert.ok(artifactAbility('hearth', 'rare', 3).power > artifactAbility('hearth', 'rare', 1).power);
 });
 
 test('artifacts: commons carry no ability, uncommon and better do, stronger by rarity', () => {
@@ -135,7 +135,7 @@ test('run-end artifacts: three distinct choices; odds improve the further the ru
   assert.ok(artifactOdds(30).mythical > o1.mythical * 10);
   // Choosing takes one and clears the offer.
   const cmd = commanderDefaults();
-  cmd.artifactOffer = [{ id: 'bloodstone', rarity: 'rare' }, { id: 'mortar', rarity: 'common' }, { id: 'ledger', rarity: 'uncommon' }];
+  cmd.artifactOffer = [{ id: 'bloodstone', rarity: 'rare' }, { id: 'hearth', rarity: 'common' }, { id: 'ledger', rarity: 'uncommon' }];
   const res = chooseArtifact(cmd, 0);
   assert.equal(res.artifact.id, 'bloodstone');
   assert.equal(cmd.artifactOffer, null);
@@ -148,8 +148,8 @@ test('bonuses and abilities: perks, skills and equipped artifacts add up; unequi
   const a = addArtifact(cmd, { id: 'kingslayer', rarity: 'legendary' }).artifact;
   addArtifact(cmd, { id: 'falconHood', rarity: 'rare' });
   let b = totalBonuses(cmd);
-  assert.equal(b.heroDamagePct, 22 + 8 + 28);
-  assert.equal(b.heroCritAdd, 12);
+  assert.equal(b.towerDamagePct, 22 + 8 + 28);
+  assert.equal(b.towerCritAdd, 12);
   let ab = totalAbilities(cmd);
   assert.equal(ab.judgement, 2.4);
   assert.equal(ab.meteor, 1 + 1.5, 'skill and artifact with the same ability stack');
@@ -157,48 +157,52 @@ test('bonuses and abilities: perks, skills and equipped artifacts add up; unequi
   unequip(cmd, a.uid);
   b = totalBonuses(cmd);
   ab = totalAbilities(cmd);
-  assert.equal(b.heroDamagePct, 30);
-  assert.equal(b.heroCritAdd, undefined);
+  assert.equal(b.towerDamagePct, 30);
+  assert.equal(b.towerCritAdd, undefined);
   assert.equal(ab.judgement, undefined);
   assert.deepEqual(runConfig(CFG, cmd).COMMANDER_ABILITIES, ab);
 });
 
 test('applyBonuses changes a copy and never the shared config', () => {
-  const before = JSON.stringify(CFG.HEROES) + JSON.stringify(CFG.WALLS) + CFG.ECONOMY.startingGold;
-  const c = applyBonuses(CFG, { heroDamagePct: 50, wallCostPct: 500, startingGoldAdd: 100, enemyHpPct: 10, killGoldPct: 20 }, { meteor: 2 });
+  const before = JSON.stringify(CFG.TOWERS) + JSON.stringify(CFG.RUNNER) + CFG.ECONOMY.startingGold;
+  const c = applyBonuses(CFG, {
+    towerDamagePct: 50, towerCostPct: 500, startingGoldAdd: 100, enemyHpPct: 10, killGoldPct: 20,
+    runnerSpeedPct: 20, runnerCrateAdd: 1, spellCooldownPct: 50, ammoPct: 25, towerSlotAdd: 1, upgradeCostPct: 10,
+  }, { meteor: 2 });
   assert.deepEqual(c.COMMANDER_ABILITIES, { meteor: 2 });
-  assert.equal(JSON.stringify(CFG.HEROES) + JSON.stringify(CFG.WALLS) + CFG.ECONOMY.startingGold, before);
-  assert.equal(c.HEROES.archer.damage, CFG.HEROES.archer.damage * 1.5);
-  assert.equal(c.WALLS.stone.cost, Math.round(CFG.WALLS.stone.cost * (1 - COMMANDER.maxReductionPct / 100)), 'reductions are capped');
+  assert.equal(JSON.stringify(CFG.TOWERS) + JSON.stringify(CFG.RUNNER) + CFG.ECONOMY.startingGold, before);
+  assert.equal(c.TOWERS.arrow.damage, CFG.TOWERS.arrow.damage * 1.5);
+  assert.equal(c.TOWERS.arrow.cost, Math.round(CFG.TOWERS.arrow.cost * (1 - COMMANDER.maxReductionPct / 100)), 'reductions are capped');
+  assert.equal(c.TOWERS.boulder.ammo, Math.round(CFG.TOWERS.boulder.ammo * 1.25));
   assert.equal(c.ECONOMY.startingGold, CFG.ECONOMY.startingGold + 100);
   assert.equal(c.ZOMBIES.walker.hp, Math.round(CFG.ZOMBIES.walker.hp * 0.9));
   assert.equal(c.BONUS.killGoldPct, 20);
-  assert.equal(applyBonuses(CFG, { abilityCooldownPct: 50 }).HERO_ACTIVES.fireball.cooldown, CFG.HERO_ACTIVES.fireball.cooldown * 0.5, 'hero actives recharge faster');
-  const t = applyBonuses(CFG, { heroDamagePct: 20, heroRangeAdd: 1, towerCostPct: 10 });
-  assert.equal(t.TOWERS.fire.damage, CFG.TOWERS.fire.damage * 1.2, 'damage bonuses reach the towers');
-  assert.equal(t.TOWERS.wind.range, CFG.TOWERS.wind.range + 1);
-  assert.equal(t.TOWERS.earth.cost, Math.round(CFG.TOWERS.earth.cost * 0.9));
-  assert.equal(CFG.TOWERS.fire.damage, 12);
-  assert.equal(typeof c.HERO_RULES.xpToNext, 'function');
+  assert.equal(c.BONUS.towerSlotAdd, 1);
+  assert.ok(Math.abs(c.RUNNER.speed - CFG.RUNNER.speed * 1.2) < 1e-9);
+  assert.equal(c.RUNNER.crates, CFG.RUNNER.crates + 1);
+  assert.equal(c.SPELLS.pepTalk.cooldown, CFG.SPELLS.pepTalk.cooldown * 0.5);
+  assert.ok(Math.abs(c.TOWER_RULES.upgradeBase - CFG.TOWER_RULES.upgradeBase * 0.9) < 1e-9);
+  assert.equal(typeof c.RUNNER.xpToNext, 'function');
   const sim = new Simulation({ seed: 1, config: c });
   assert.equal(sim.economy.gold, CFG.ECONOMY.startingGold + 100);
+  assert.equal(sim.towers.slots, CFG.TOWER_RULES.baseSlots + 1, 'a commander slot bonus opens a slot');
+  assert.equal(sim.runner.main.crates, CFG.RUNNER.crates + 1);
 });
 
-test('save: version 1 saves are upgraded, garbage commander data is cleaned', () => {
-  const v1 = { version: 1, bestWave: 12, highScore: 3400, totalKills: 900, runs: 7, settings: { muted: true, volume: 0.3, shadows: false, showPath: true } };
-  const s = sanitize(v1);
-  assert.equal(s.version, 2);
-  assert.equal(s.bestWave, 12);
-  assert.equal(s.settings.muted, true);
+test('save: old saves start fresh, garbage commander data is cleaned, maps unlock in order', () => {
+  const old = { version: 2, bestWave: 12, highScore: 3400, totalKills: 900, runs: 7, settings: { muted: true } };
+  const s = sanitize(old);
+  assert.equal(s.version, 3);
+  assert.equal(s.bestWave, 0, 'DW Classic progress stays in DW Classic');
   assert.deepEqual(s.commander, commanderDefaults());
 
   const messy = sanitize({
-    ...v1, version: 2,
+    version: 3, maps: { oldroad: { bestWave: 4 }, nowhere: { bestWave: 99 } },
     commander: {
       level: 3, xp: 1e9, pendingPicks: 2, offer: [{ id: 'hacked', rarity: 'mythical' }],
       perks: [{ id: 'sharpSteel', rarity: 'rare' }, { id: 'hallowedGround', rarity: 'common' }, { id: 'x' }],
-      artifacts: [{ uid: 4, id: 'mortar', rarity: 'superb' }, { uid: 5, id: 'mortar', rarity: 'rare', level: 99 }, { uid: 5, id: 'ledger', rarity: 'rare' }],
-      equipped: [5, 5, 99], nextUid: 1, artifactOffer: [{ id: 'mortar', rarity: 'rare' }, { id: 'hacked', rarity: 'rare' }],
+      artifacts: [{ uid: 4, id: 'hearth', rarity: 'superb' }, { uid: 5, id: 'hearth', rarity: 'rare', level: 99 }, { uid: 5, id: 'ledger', rarity: 'rare' }],
+      equipped: [5, 5, 99], nextUid: 1, artifactOffer: [{ id: 'hearth', rarity: 'rare' }, { id: 'hacked', rarity: 'rare' }],
     },
   });
   const c = messy.commander;
@@ -206,23 +210,29 @@ test('save: version 1 saves are upgraded, garbage commander data is cleaned', ()
   assert.ok(c.xp < COMMANDER.xpToNext(3));
   assert.equal(c.offer, null, 'invalid offers are dropped (a fresh one is rolled later)');
   assert.deepEqual(c.perks, [{ id: 'sharpSteel', rarity: 'rare' }], 'unknown perks and impossible rarities are dropped');
-  assert.deepEqual(c.artifacts, [{ uid: 5, id: 'mortar', rarity: 'rare', level: COMMANDER.artifactMaxLevel }]);
+  assert.deepEqual(c.artifacts, [{ uid: 5, id: 'hearth', rarity: 'rare', level: COMMANDER.artifactMaxLevel }]);
   assert.equal(c.artifactOffer, null, 'an offer with an unknown artifact is dropped');
-  const keep = sanitize({ ...v1, version: 2, commander: { artifactOffer: [{ id: 'mortar', rarity: 'rare' }] } });
-  assert.deepEqual(keep.commander.artifactOffer, [{ id: 'mortar', rarity: 'rare' }], 'a pending choice survives a reload');
   assert.deepEqual(c.equipped, [5]);
   assert.equal(c.nextUid, 6);
+  assert.deepEqual(Object.keys(messy.maps), ['oldroad'], 'unknown maps are dropped');
   assert.deepEqual(sanitize('garbage').commander, commanderDefaults());
+  // Maps unlock in order: wave 10 on one map opens the next.
+  const [m1, m2, m3] = CFG.MAPS;
+  assert.ok(isMapUnlocked(messy, m1) && !isMapUnlocked(messy, m2));
+  const r = recordRun(messy, { map: m1.id, wave: m2.unlock.wave, score: 100, kills: 5 });
+  assert.deepEqual(r.unlocked, [m2.id]);
+  assert.ok(isMapUnlocked(r.save, m2) && !isMapUnlocked(r.save, m3));
+  assert.equal(r.save.maps[m1.id].bestWave, m2.unlock.wave);
   // recordRun keeps the commander.
   messy.commander.level = 4;
-  assert.equal(recordRun(messy, { wave: 1, score: 0, kills: 0 }).save.commander.level, 4);
+  assert.equal(recordRun(messy, { map: m1.id, wave: 1, score: 0, kills: 0 }).save.commander.level, 4);
 });
 
 test('plunder bonus pays extra kill gold fractionally', () => {
   const c = applyBonuses(CFG, { killGoldPct: 50 });
   const sim = new Simulation({ seed: 2, config: c });
   const g = sim.economy.gold;
-  for (let i = 0; i < 4; i++) sim.zombies.damage(sim.zombies.spawn('walker', 5.5, 5.5), 1e9);
+  for (let i = 0; i < 4; i++) sim.zombies.damage(sim.zombies.spawn('walker', 0), 1e9);
   assert.equal(sim.economy.gold - g, 4 * CFG.ZOMBIES.walker.reward * 1.5);
 });
 
@@ -265,7 +275,7 @@ test('wave variants: early and boss waves are normal, specials never repeat, all
 test('wave variants in a run: preview matches the wave that starts, swarm kills pay less', () => {
   const sim = new Simulation({ seed: 5 });
   let checked = 0;
-  for (let w = 0; w < 14; w++) {
+  for (let w = 0; w < 30; w++) {
     const pv = sim.waves.preview();
     sim.waves.startNext();
     assert.equal(sim.waves.variant, pv.variant);
@@ -284,19 +294,18 @@ test('wave variants in a run: preview matches the wave that starts, swarm kills 
   assert.ok(checked > 0, 'saw at least one swarm');
 });
 
-test('champion: high level cap and wave-clear XP that never skips past levels', () => {
-  assert.ok(CFG.HERO_RULES.maxLevel >= 50, 'the champion can grow far past level 10');
+test('runner: levels from kills and cleared waves, never skipping past a level', () => {
   const sim = new Simulation({ seed: 8 });
-  const h = sim.heroes.recruitChampion('warrior');
-  const need = sim.heroes.xpToNext(h);
-  sim.heroes.awardWaveXp();
-  assert.equal(h.level, 1);
-  assert.equal(Math.round(h.xp), Math.round(need * CFG.HERO_RULES.waveClearLevelFraction));
-  sim.heroes.awardWaveXp();
-  assert.equal(h.level, 2, 'two cleared waves without kills = one level');
-  for (let l = 1; l < 60; l++) assert.ok(CFG.HERO_RULES.xpToNext(l + 1) > CFG.HERO_RULES.xpToNext(l));
+  const r = sim.runner;
+  const need = CFG.RUNNER.xpToNext(1);
+  r.awardWave();
+  assert.equal(r.level, 1);
+  assert.equal(Math.round(r.xp), Math.round(need * CFG.RUNNER.waveClearLevelFraction));
+  r.addXp(1e6);
+  assert.equal(r.level, CFG.RUNNER.maxLevel, 'capped');
+  assert.equal(r.pendingPicks, CFG.RUNNER.maxLevel - 1, 'one pick per level');
+  for (let l = 1; l < 60; l++) assert.ok(CFG.RUNNER.xpToNext(l + 1) > CFG.RUNNER.xpToNext(l));
 });
-
 
 // --- commander abilities in a run ---
 const abilityRun = (abilities, seed = 31) => {
@@ -313,9 +322,9 @@ test('meteor hits the densest pack; judgement smites the toughest enemy', () => 
   const sim = abilityRun({ meteor: 1, judgement: 1 });
   sim.waves.queue.length = 0;
   const pack = [];
-  for (let i = 0; i < 6; i++) pack.push(sim.zombies.spawn('walker', 6.5 + (i % 2) * 0.3, 8.5 + i * 0.1, 50));
-  const lone = sim.zombies.spawn('walker', 20.5, 8.5, 50);
-  const big = sim.zombies.spawn('brute', 25.5, 5.5, 200);
+  for (let i = 0; i < 6; i++) pack.push(sim.zombies.spawn('walker', 0, 50, { s: 10 + i * 0.1, lane: 0.1 * (i % 2) }));
+  const lone = sim.zombies.spawn('walker', 0, 50, { s: 30 });
+  const big = sim.zombies.spawn('brute', 0, 200, { s: 45 });
   const used = [];
   sim.events.on('commanderAbility', (e) => used.push(e.id));
   for (let t = 0; t < 10; t += 1 / 30) sim.abilities.step(1 / 30);
@@ -325,17 +334,18 @@ test('meteor hits the densest pack; judgement smites the toughest enemy', () => 
   assert.ok(big.hp < big.maxHp, 'the toughest enemy was smitten');
 });
 
-test('frost slows everyone, masonry repairs walls, bulwark heals the gate, tithe pays on clear', () => {
-  const sim = abilityRun({ frost: 1, masonry: 1, bulwark: 1, tithe: 1 });
+test('frost slows everyone, supply refills towers, bulwark heals the house, tithe pays on clear', () => {
+  const sim = abilityRun({ frost: 1, supply: 1, bulwark: 1, tithe: 1 });
   sim.waves.queue.length = 0;
-  const zs = [sim.zombies.spawn('walker', 3.5, 4.5), sim.zombies.spawn('runner', 25.5, 10.5)];
-  const w = sim.walls.build('stone', 10, 12);
-  w.hp = w.maxHp / 2;
-  sim.fortress.hp = sim.fortress.maxHp / 2;
-  for (let t = 0; t < 12; t += 1 / 30) sim.abilities.step(1 / 30);
+  const zs = [sim.zombies.spawn('walker', 0, 1, { s: 3 }), sim.zombies.spawn('runner', 0, 1, { s: 20 })];
+  sim.economy.earn(1000);
+  const t = sim.towers.build('arrow', 17, 2);
+  t.ammo = 0;
+  sim.house.hp = sim.house.maxHp / 2;
+  for (let k = 0; k < 20; k += 1 / 30) sim.abilities.step(1 / 30);
   assert.ok(zs.every((z) => z.slowUntil > sim.zombies.time), 'everyone slowed');
-  assert.ok(w.hp > w.maxHp / 2);
-  assert.ok(sim.fortress.hp > sim.fortress.maxHp / 2);
+  assert.ok(t.ammo > 0, 'supply drop refilled the tower');
+  assert.ok(sim.house.hp > sim.house.maxHp / 2);
   const gold = sim.economy.gold;
   for (const z of sim.zombies.list) sim.zombies.damage(z, 1e9);
   sim.waves.step(0.1);
@@ -349,13 +359,13 @@ test('abilities rest between waves and scale with power', () => {
   for (const z of sim.zombies.list) sim.zombies.damage(z, 1e9);
   sim.waves.step(0.1);
   assert.equal(sim.waves.phase, 'prep');
-  const z = sim.zombies.spawn('brute', 10.5, 8.5, 10);
+  const z = sim.zombies.spawn('brute', 0, 10, { s: 20 });
   for (let t = 0; t < 20; t += 1 / 30) sim.abilities.step(1 / 30);
   assert.equal(z.hp, z.maxHp, 'nothing fires during preparation');
   const hit = (power) => {
     const s = abilityRun({ judgement: power }, 40);
     s.waves.queue.length = 0;
-    const b = s.zombies.spawn('brute', 10.5, 8.5, 100);
+    const b = s.zombies.spawn('brute', 0, 100, { s: 20 });
     for (let t = 0; t < ABILITIES.judgement.interval; t += 1 / 30) s.abilities.step(1 / 30);
     return b.maxHp - b.hp;
   };

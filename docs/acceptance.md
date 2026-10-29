@@ -1,3 +1,5 @@
+> These acceptance results are for **DW Classic** (now in `src-classic/`). The current game is balanced with `tools/simulate.js` (numbers in CLAUDE.md).
+
 # DEADWALL — Acceptance report (spec section 19)
 
 How each acceptance item was verified. **Node** = automated test in `tests/` (run with `npm test`; 83 tests, all passing at the end of phase 6). **Browser** = checked in the running game in the in-app browser with simulated input and `window.debug` (phases 1–6). Nothing below is marked as verified unless it was actually run.

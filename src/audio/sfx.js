@@ -8,6 +8,7 @@ const THROTTLE = {
   bow: 0.05, crossbow: 0.08, magic: 0.06, melee: 0.06, wallHit: 0.07, gateHit: 0.15,
   death: 0.05, gold: 0.06, thorns: 0.12, poison: 0.2, ui: 0.03, build: 0.04, deny: 0.15,
   repair: 0.1, alarm: 1.5, explosion: 0.08, fire: 0.08, arcane: 0.15,
+  bonk: 0.2, refill: 0.08, slip: 0.12, leak: 0.1, empty: 0.6,
 };
 
 export class Sfx {
@@ -152,5 +153,12 @@ export class Sfx {
     },
     ui(k) { this.#tone('sine', 900, 700, 0.04, 0.04 * k); },
     deny(k) { this.#tone('square', 180, 140, 0.12, 0.05 * k); },
+    // Silly runner sounds.
+    bonk(k) { this.#tone('sine', 900, 180, 0.18, 0.18 * k); this.#noise('bandpass', 1200, 600, 0.06, 0.15 * k, 0, 0.002, 3); this.#tone('triangle', 1400, 1500, 0.35, 0.04 * k, 0.12, 0.01); },
+    refill(k) { this.#tone('triangle', 300, 720, 0.12, 0.07 * k); this.#noise('lowpass', 900, 300, 0.08, 0.08 * k, 0.05); },
+    spell(k) { [659, 880, 1175, 1568].forEach((f, i) => this.#tone('triangle', f, f * 1.01, 0.16, 0.06 * k, i * 0.05)); },
+    slip(k) { this.#tone('sine', 1400, 300, 0.4, 0.07 * k, 0, 0.01); },
+    leak(k) { this.#tone('sine', 80, 40, 0.35, 0.3 * k); this.#noise('lowpass', 800, 100, 0.3, 0.25 * k); },
+    empty(k) { this.#tone('square', 300, 300, 0.06, 0.04 * k); this.#tone('square', 220, 220, 0.08, 0.04 * k, 0.09); },
   };
 }

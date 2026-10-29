@@ -1,11 +1,12 @@
 // Persistent records in localStorage. Every read is validated; a missing, corrupted or
 // outdated save falls back to defaults and can never stop the game from starting.
-// Version 1 saves (before the Commander) are upgraded: their records and settings are kept.
+// This game has its own key: DW Classic keeps its old save ('deadwall.save') untouched.
 import { commanderDefaults, slotCount } from './commander.js';
 import { PERKS, ARTIFACTS, RARITIES, COMMANDER } from '../config/commander.js';
+import { MAPS } from '../config/maps.js';
 
-const KEY = 'deadwall.save';
-const VERSION = 2;
+const KEY = 'deadwall.towers.save';
+const VERSION = 3;
 
 const DEFAULTS = () => ({
   version: VERSION,
@@ -13,10 +14,12 @@ const DEFAULTS = () => ({
   highScore: 0,
   totalKills: 0,
   runs: 0,
+  /** Per map: best wave and high score. A map is unlocked by its `unlock` rule (maps.js). */
+  maps: {},
   settings: {
-    muted: false, volume: 0.7, shadows: true, showPath: true,
-    /** Hero loot auto-sell: drops of a rarity not in `keep` are sold at once. */
-    lootAutoSell: { on: false, keep: RARITIES.slice(1) },
+    muted: false, volume: 0.7, shadows: true, showRanges: true,
+    /** Spells that auto-cast (spell id -> on). */
+    autoCast: {},
   },
   commander: commanderDefaults(),
 });
@@ -67,26 +70,36 @@ export function sanitizeCommander(raw) {
 /** Returns a clean save object built only from valid fields of `raw`. */
 export function sanitize(raw) {
   const d = DEFAULTS();
-  if (!raw || typeof raw !== 'object' || (raw.version !== VERSION && raw.version !== 1)) return d;
+  if (!raw || typeof raw !== 'object' || raw.version !== VERSION) return d;
+  const maps = {};
+  for (const m of MAPS) {
+    const r = raw.maps?.[m.id];
+    if (r && typeof r === 'object') maps[m.id] = { bestWave: nonNegInt(r.bestWave), highScore: nonNegInt(r.highScore) };
+  }
+  const autoCast = {};
+  for (const [k, v] of Object.entries(raw.settings?.autoCast ?? {})) if (typeof v === 'boolean' && /^[a-zA-Z]+$/.test(k)) autoCast[k] = v;
   return {
     version: VERSION,
     bestWave: nonNegInt(raw.bestWave),
     highScore: nonNegInt(raw.highScore),
     totalKills: nonNegInt(raw.totalKills),
     runs: nonNegInt(raw.runs),
+    maps,
     settings: {
       muted: bool(raw.settings?.muted, d.settings.muted),
       volume: Number.isFinite(raw.settings?.volume) ? Math.min(1, Math.max(0, raw.settings.volume)) : d.settings.volume,
       shadows: bool(raw.settings?.shadows, d.settings.shadows),
-      showPath: bool(raw.settings?.showPath, d.settings.showPath),
-      lootAutoSell: {
-        on: bool(raw.settings?.lootAutoSell?.on, d.settings.lootAutoSell.on),
-        keep: Array.isArray(raw.settings?.lootAutoSell?.keep)
-          ? RARITIES.filter((r) => raw.settings.lootAutoSell.keep.includes(r)) : d.settings.lootAutoSell.keep,
-      },
+      showRanges: bool(raw.settings?.showRanges, d.settings.showRanges),
+      autoCast,
     },
     commander: sanitizeCommander(raw.commander),
   };
+}
+
+/** Whether a map can be played: the first always, others once their unlock rule is met. */
+export function isMapUnlocked(save, map) {
+  if (!map.unlock) return true;
+  return (save.maps?.[map.unlock.map]?.bestWave ?? 0) >= map.unlock.wave;
 }
 
 export function loadSave(storage = globalThis.localStorage) {
@@ -109,11 +122,17 @@ export function writeSave(save, storage = globalThis.localStorage) {
 /** Folds a finished run into the records. Returns the new save and whether records broke. */
 export function recordRun(save, summary) {
   const next = sanitize(save);
-  const newBestWave = summary.wave > next.bestWave;
-  const newHighScore = summary.score > next.highScore;
+  const rec = next.maps[summary.map] ?? { bestWave: 0, highScore: 0 };
+  const newBestWave = summary.wave > rec.bestWave;
+  const newHighScore = summary.score > rec.highScore;
+  const wasLocked = MAPS.filter((m) => !isMapUnlocked(next, m)).map((m) => m.id);
+  rec.bestWave = Math.max(rec.bestWave, nonNegInt(summary.wave));
+  rec.highScore = Math.max(rec.highScore, nonNegInt(summary.score));
+  if (MAPS.some((m) => m.id === summary.map)) next.maps[summary.map] = rec;
   next.bestWave = Math.max(next.bestWave, nonNegInt(summary.wave));
   next.highScore = Math.max(next.highScore, nonNegInt(summary.score));
   next.totalKills += nonNegInt(summary.kills);
   next.runs += 1;
-  return { save: next, newBestWave, newHighScore };
+  const unlocked = MAPS.filter((m) => wasLocked.includes(m.id) && isMapUnlocked(next, m)).map((m) => m.id);
+  return { save: next, newBestWave, newHighScore, unlocked };
 }

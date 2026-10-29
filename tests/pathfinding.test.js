@@ -1,9 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { findPath, computeFlowField } from '../src/core/pathfinding.js';
-import { zombieCostFn } from '../src/core/walls.js';
-import { makeWorld, openGrid } from './helpers.js';
-import { MAP, PATHING } from '../src/config/game.js';
+import { openGrid } from './helpers.js';
 
 const blockedCost = (blocked) => (x, y) => (blocked.has(`${x},${y}`) ? Infinity : 1);
 
@@ -35,60 +33,18 @@ test('returns null when fully blocked', () => {
   assert.equal(findPath(g, { x: 2, y: 0 }, { x: 2, y: 4 }, { cost: blockedCost(blocked) }), null);
 });
 
-test('zombies go around a short wall but through a full wall line', () => {
-  const { grid, walls } = makeWorld({ gold: 10000 });
-  const cost = zombieCostFn(grid, walls, PATHING);
-  const isOpen = (x, y) => cost(x, y) === 1;
-  const start = { x: MAP.gateX, y: 1 };
-  const goal = { x: MAP.gateX, y: MAP.castleWallRow };
-  const touchesWall = (p) => p.some(({ x, y }) => walls.at(x, y));
-
-  for (let x = 12; x <= 18; x++) walls.build('stone', x, 10);
-  let p = findPath(grid, start, goal, { cost, isOpen });
-  assert.ok(p && !touchesWall(p), 'detours around a 7-wide wall');
-
-  for (let x = 0; x < MAP.width; x++) walls.build('stone', x, 10);
-  p = findPath(grid, start, goal, { cost, isOpen });
-  assert.ok(p && touchesWall(p), 'breaks through a complete line');
-  assert.equal(p.filter(({ x, y }) => walls.at(x, y)).length, 1, 'through exactly one wall');
-});
-
-test('path reacts when a wall is removed', () => {
-  const { grid, walls } = makeWorld({ gold: 10000 });
-  const cost = zombieCostFn(grid, walls, PATHING);
-  for (let x = 0; x < MAP.width; x++) walls.build('stone', x, 10);
-  const gap = walls.at(3, 10);
-  walls.destroy(gap.id);
-  const p = findPath(grid, { x: 3, y: 1 }, { x: MAP.gateX, y: MAP.castleWallRow }, { cost });
-  assert.ok(p.some(({ x, y }) => x === 3 && y === 10), 'uses the new opening');
-  assert.ok(!p.some(({ x, y }) => walls.at(x, y)), 'no longer attacks a wall');
-});
-
 test('flow field: every reachable cell leads to the goal', () => {
-  const { grid, walls } = makeWorld({ gold: 10000 });
-  const cost = zombieCostFn(grid, walls, PATHING);
-  for (let x = 0; x < MAP.width; x++) if (x !== 23) walls.build('stone', x, 12);
-  const goal = { x: MAP.gateX, y: MAP.castleWallRow };
-  const { dist, next } = computeFlowField(grid, [goal], { cost });
-  const goalIdx = grid.index(goal.x, goal.y);
-  for (let y = 0; y < MAP.spawnRows; y++) {
-    for (let x = 0; x < MAP.width; x++) {
-      let i = grid.index(x, y);
-      if (dist[i] === Infinity) continue;
-      let steps = 0;
-      while (i !== goalIdx && steps++ < 500) i = next[i];
-      assert.equal(i, goalIdx, `from ${x},${y}`);
+  const g = openGrid(12, 10);
+  for (let y = 0; y < 9; y++) g.terrain[g.index(6, y)] = 1;
+  const goal = { x: 11, y: 0 };
+  const cost = (x, y) => (g.terrainAt(x, y) === 0 ? 1 : Infinity);
+  const f = computeFlowField(g, [goal], { cost });
+  for (let y = 0; y < g.height; y++) {
+    for (let x = 0; x < g.width; x++) {
+      if (cost(x, y) === Infinity) continue;
+      let i = g.index(x, y), steps = 0;
+      while (f.next[i] >= 0 && steps < 200) { i = f.next[i]; steps++; }
+      assert.equal(i, g.index(goal.x, goal.y), `cell ${x},${y} reaches the goal`);
     }
   }
-  // Near the gap the field funnels through it rather than attacking walls. (From far
-  // away, breaking one wall can be cheaper than a long detour, which is intended.)
-  const spawn = grid.index(23, 1);
-  let i = spawn, usedGap = false;
-  while (i !== goalIdx) {
-    const x = i % grid.width, y = (i / grid.width) | 0;
-    assert.ok(!walls.at(x, y));
-    if (x === 23 && y === 12) usedGap = true;
-    i = next[i];
-  }
-  assert.ok(usedGap);
 });

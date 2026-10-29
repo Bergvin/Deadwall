@@ -1,126 +1,184 @@
-// Elemental towers on walls: building, upgrading, selling, targeting and firing. A wall can
-// carry one tower, unless it is part of the champion's 2x2 block. A tower falls with its
-// wall. Impacts reuse the combat payload system, so damage, burn, slow and stun behave the
-// same as hero attacks.
+// Towers on free ground: placement (limited slots), upgrades with a specialisation choice,
+// selling, ammo, targeting and firing. Impacts go through CombatSystem.applyPayload.
+// A tower without ammo does nothing until the runner brings a crate (see runner.js).
+// Spells and perks change towers through timed buffs (t.buffs) and the `extra` hook the
+// simulation provides (runner auras, plague clouds, perpetual motion).
 
-export function towerStats(type, level, rules) {
+const MULT_KEYS = {
+  damageMult: 'damage', intervalMult: 'interval', aoeMult: 'aoe', knockMult: 'knock',
+};
+
+/** Pure: a tower's stats at a level and specialisation (`spec` = 'a' | 'b' | null). */
+export function towerStats(type, level, spec, rules) {
   const k = level - 1;
-  return {
+  const s = {
     damage: type.damage * rules.damageMult ** k,
+    damageType: type.damageType,
+    interval: type.interval * rules.intervalMult ** k,
     range: type.range + rules.rangeAdd * k,
-    interval: type.interval,
     aoe: type.aoe ?? 0,
     armorPen: type.armorPen ?? 0,
-    burn: type.burn ? { dps: type.burn.dps * rules.burnMult ** k, duration: type.burn.duration } : null,
-    stun: type.stun ? type.stun + rules.stunAdd * k : 0,
-    targets: type.targets ? type.targets + rules.targetsAdd * k : 1,
+    maxAmmo: Math.round(type.ammo * rules.ammoMult ** k),
+    targets: type.targets ?? 1,
+    burn: type.burn ? { dps: type.burn.dps * rules.burnMult ** k * rules.damageMult ** (k / 2), duration: type.burn.duration } : null,
     slow: type.slow ? { factor: type.slow.factor * rules.slowFactorMult ** k, duration: type.slow.duration } : null,
+    stun: type.stun ? type.stun + rules.stunAdd * k : 0,
+    knock: type.knock ? type.knock + rules.knockAdd * k : 0,
+    lift: 0,
+    bossMult: 0,
+    freezeChance: 0, freezeTime: 0,
+    shred: null, napalm: null, bleed: null,
+    balls: 1,
+    critChance: rules.critChance ?? 0,
   };
+  const mods = spec ? type.specs?.[spec]?.mods ?? {} : {};
+  for (const [key, v] of Object.entries(mods)) {
+    if (MULT_KEYS[key]) s[MULT_KEYS[key]] *= v;
+    else if (key === 'burnMult' && s.burn) s.burn.dps *= v;
+    else if (key === 'slowFactorMult' && s.slow) s.slow.factor *= v;
+    else if (key === 'targetsAdd') s.targets += v;
+    else if (key === 'rangeAdd') s.range += v;
+    else if (key === 'stunAdd') s.stun += v;
+    else if (key === 'napalm') s.napalm = { radius: v.radius, duration: v.duration, dps: (s.burn?.dps ?? s.damage) * (v.dpsMult ?? 1) };
+    else s[key] = v;
+  }
+  return s;
 }
 
 export class TowerSystem {
   #towers = new Map();
   #nextId;
 
-  /** @param {{walls, zombies, projectiles, economy, events, types, rules}} deps */
-  constructor({ walls, zombies, projectiles, economy, events, types, rules }) {
-    Object.assign(this, { walls, zombies, projectiles, economy, events, types, rules });
+  /** @param {{grid, zombies, projectiles, combat, economy, events, types, rules}} deps */
+  constructor({ grid, zombies, projectiles, combat, economy, events, types, rules }) {
+    Object.assign(this, { grid, zombies, projectiles, combat, economy, events, types, rules });
     this.#nextId = rules.idBase + 1;
+    this.time = 0;
     this.priceMultiplier = () => 1;
-    events.on('wallRemoved', ({ wall, cause }) => {
-      const t = wall.towerId ? this.get(wall.towerId) : null;
-      if (!t) return;
-      // Selling a wall sells its tower too; a destroyed wall takes the tower with it.
-      if (cause === 'sold') this.sell(t.id);
-      else this.#remove(t, 'destroyed');
-    });
+    /** Highest wave reached (slots grow with it); set by the simulation. */
+    this.slotWave = () => 0;
+    /** Extra slots from the Commander. */
+    this.slotBonus = 0;
+    /** Simulation hook: {damagePct, attackSpeedPct, freeAmmo, gunk} from things outside the tower. */
+    this.extra = () => null;
   }
 
   get(id) { return this.#towers.get(id) ?? null; }
   all() { return this.#towers.values(); }
   get count() { return this.#towers.size; }
 
-  /** Base price of the next tower of this type: grows with every tower already standing. */
-  priceOf(typeKey) {
-    return Math.round(this.types[typeKey].cost * (1 + this.rules.costGrowth * this.#towers.size));
+  /** Tower slots available now. */
+  get slots() {
+    const r = this.rules;
+    const w = this.slotWave();
+    return Math.min(r.maxSlots, r.baseSlots + r.slotWaves.filter((x) => w >= x).length + this.slotBonus);
   }
 
-  /** What the player pays now (includes the combat surcharge). */
+  /** Wave at which the next slot opens (null when none left). */
+  get nextSlotWave() {
+    const w = this.slotWave();
+    if (this.slots >= this.rules.maxSlots) return null;
+    return this.rules.slotWaves.find((x) => x > w) ?? null;
+  }
+
   costOf(typeKey) {
-    return Math.ceil(this.priceOf(typeKey) * this.priceMultiplier());
+    return Math.ceil(this.types[typeKey].cost * this.priceMultiplier());
   }
 
   /** @returns {{ok: true} | {ok: false, reason: string}} */
-  canBuild(typeKey, wallId) {
-    const w = this.walls.get(wallId);
+  canBuild(typeKey, x, y) {
     if (!this.types[typeKey]) return { ok: false, reason: 'unknown_type' };
-    if (!w) return { ok: false, reason: 'no_wall' };
-    if (w.towerId) return { ok: false, reason: 'has_tower' };
-    if (w.heroes.length) return { ok: false, reason: 'hero_there' };
+    if (!this.grid.isBuildable(x, y)) return { ok: false, reason: 'blocked' };
+    if (this.count >= this.slots) return { ok: false, reason: 'no_slots' };
     if (!this.economy.canAfford(this.costOf(typeKey))) return { ok: false, reason: 'insufficient_gold' };
     return { ok: true };
   }
 
-  build(typeKey, wallId) {
-    const check = this.canBuild(typeKey, wallId);
+  build(typeKey, x, y) {
+    const check = this.canBuild(typeKey, x, y);
     if (!check.ok) {
       this.events.emit('actionRejected', { action: 'tower', reason: check.reason });
       return null;
     }
-    const price = this.costOf(typeKey);
-    if (!this.economy.trySpend(price, `tower:${typeKey}`)) return null;
-    const w = this.walls.get(wallId);
+    if (!this.economy.trySpend(this.costOf(typeKey), `tower:${typeKey}`)) return null;
+    const type = this.types[typeKey];
     const t = {
       id: this.#nextId++,
       type: typeKey,
-      wallId,
-      x: w.x + 0.5, z: w.y + 0.5,
+      x, y, cx: x + 0.5, cz: y + 0.5,
       level: 1,
-      // Refunds use the base price paid, never the combat surcharge.
-      invested: this.priceOf(typeKey),
+      spec: null,
+      // Refunds use the base price, never the combat surcharge.
+      invested: type.cost,
       cooldown: 0,
       targetId: 0,
       facing: Math.PI,
-      targeting: 'threat',
+      targeting: 'first',
+      buffs: [],
+      jammedUntil: 0,
+      golden: 0,
       kills: 0,
+      empty: false,
       waveDamage: 0, lastWaveDamage: 0, lastWaveDps: 0, totalDamage: 0,
     };
-    t.stats = towerStats(this.types[typeKey], 1, this.rules);
-    w.towerId = t.id;
+    t.stats = towerStats(type, 1, null, this.rules);
+    // A new tower comes with a full load.
+    t.ammo = t.stats.maxAmmo;
+    this.grid.towerId[this.grid.index(x, y)] = t.id;
     this.#towers.set(t.id, t);
     this.events.emit('towerBuilt', t);
     return t;
   }
 
+  /** Price of the next level (0 at max level). */
   upgradeCost(id) {
     const t = this.get(id);
     if (!t || t.level >= this.rules.maxLevel) return 0;
-    return Math.ceil(this.types[t.type].cost * this.rules.costMult[t.level - 1] * this.priceMultiplier());
+    return Math.ceil(this.#upgradeBase(t) * this.priceMultiplier());
+  }
+
+  #upgradeBase(t) {
+    const r = this.rules;
+    return this.types[t.type].cost * r.upgradeBase * r.upgradeGrowth ** (t.level - 1);
+  }
+
+  /** True when the next upgrade asks for a specialisation. */
+  needsSpec(id) {
+    const t = this.get(id);
+    return !!t && !t.spec && t.level + 1 >= this.rules.specLevel;
   }
 
   /** @returns {{ok: true} | {ok: false, reason: string}} */
-  canUpgrade(id) {
+  canUpgrade(id, spec = null) {
     const t = this.get(id);
     if (!t) return { ok: false, reason: 'no_tower' };
     if (t.level >= this.rules.maxLevel) return { ok: false, reason: 'max_level' };
+    if (this.needsSpec(id) && !this.types[t.type].specs?.[spec]) return { ok: false, reason: 'choose_spec' };
     if (!this.economy.canAfford(this.upgradeCost(id))) return { ok: false, reason: 'insufficient_gold' };
     return { ok: true };
   }
 
-  upgrade(id) {
-    const check = this.canUpgrade(id);
+  upgrade(id, spec = null) {
+    const check = this.canUpgrade(id, spec);
     if (!check.ok) {
       this.events.emit('actionRejected', { action: 'towerUpgrade', reason: check.reason });
       return false;
     }
     const t = this.get(id);
-    const cost = this.upgradeCost(id);
-    if (!this.economy.trySpend(cost, `towerUpgrade:${t.type}`)) return false;
-    t.invested += this.types[t.type].cost * this.rules.costMult[t.level - 1];
+    if (!this.economy.trySpend(this.upgradeCost(id), `towerUpgrade:${t.type}`)) return false;
+    t.invested += this.#upgradeBase(t);
     t.level++;
-    t.stats = towerStats(this.types[t.type], t.level, this.rules);
+    if (this.needsSpecAt(t, spec)) t.spec = spec;
+    const before = t.stats.maxAmmo;
+    t.stats = towerStats(this.types[t.type], t.level, t.spec, this.rules);
+    // The bigger magazine comes filled up by the difference.
+    t.ammo = Math.min(t.stats.maxAmmo, t.ammo + (t.stats.maxAmmo - before));
     this.events.emit('towerUpgraded', t);
     return true;
+  }
+
+  needsSpecAt(t, spec) {
+    return !t.spec && spec && t.level >= this.rules.specLevel;
   }
 
   sellValue(id) {
@@ -132,8 +190,10 @@ export class TowerSystem {
     const t = this.get(id);
     if (!t) return false;
     const value = this.sellValue(id);
-    this.#remove(t, 'sold');
+    this.#towers.delete(id);
+    this.grid.towerId[this.grid.index(t.x, t.y)] = 0;
     this.economy.earn(value, `sellTower:${t.type}`);
+    this.events.emit('towerRemoved', { tower: t, cause: 'sold' });
     return true;
   }
 
@@ -142,22 +202,70 @@ export class TowerSystem {
     if (t) { t.targeting = mode; t.targetId = 0; }
   }
 
-  #remove(t, cause) {
-    this.#towers.delete(t.id);
-    const w = this.walls.get(t.wallId);
-    if (w && w.towerId === t.id) w.towerId = 0;
-    this.events.emit('towerRemoved', { tower: t, cause });
+  /** Fills a tower's ammo (the runner, Tea Break). */
+  refill(id, amount = Infinity) {
+    const t = this.get(id);
+    if (!t) return 0;
+    const before = t.ammo;
+    t.ammo = Math.min(t.stats.maxAmmo, t.ammo + amount);
+    if (t.ammo > 0) t.empty = false;
+    if (t.ammo >= this.rules.lowAmmo * t.stats.maxAmmo) t.lowWarned = false;
+    return t.ammo - before;
   }
 
-  #pick(t, exclude) {
+  /** Adds a timed buff: {until, attackSpeedPct, damagePct, rangeAdd, critAdd, freeAmmo, jamAfter, source}. */
+  addBuff(id, buff) {
+    const t = this.get(id);
+    if (!t) return;
+    // The same source refreshes instead of stacking.
+    t.buffs = t.buffs.filter((b) => b.source !== buff.source);
+    t.buffs.push(buff);
+  }
+
+  /** A Tower Smasher hits a tower: ammo spills and the tower jams. */
+  smash(id, cfg, zombie, mult = 1) {
+    const t = this.get(id);
+    if (!t) return;
+    t.ammo = Math.max(0, t.ammo - t.stats.maxAmmo * cfg.ammoDrain * mult);
+    t.jammedUntil = Math.max(t.jammedUntil, this.time + cfg.jam);
+    this.events.emit('towerSmashed', { tower: t, zombie });
+  }
+
+  /** Effective modifiers on a tower right now (buffs + outside effects). */
+  modsOf(t) {
+    const m = { attackSpeedPct: 0, damagePct: t.golden, rangeAdd: 0, critAdd: 0, freeAmmo: false, gunk: 1 };
+    for (const b of t.buffs) {
+      if (b.until <= this.time) continue;
+      m.attackSpeedPct += b.attackSpeedPct ?? 0;
+      m.damagePct += b.damagePct ?? 0;
+      m.rangeAdd += b.rangeAdd ?? 0;
+      m.critAdd += b.critAdd ?? 0;
+      if (b.freeAmmo) m.freeAmmo = true;
+    }
+    const e = this.extra(t);
+    if (e) {
+      m.attackSpeedPct += e.attackSpeedPct ?? 0;
+      m.damagePct += e.damagePct ?? 0;
+      if (e.freeAmmo) m.freeAmmo = true;
+      m.gunk = e.gunk ?? 1;
+    }
+    return m;
+  }
+
+  /** Current range including buffs (for previews and targeting). */
+  rangeOf(t) {
+    return t.stats.range + this.modsOf(t).rangeAdd;
+  }
+
+  #pick(t, range, exclude) {
     let best = null, bestScore = Infinity;
-    for (const z of this.zombies.inRange(t.x, t.z, t.stats.range)) {
+    for (const z of this.zombies.inRange(t.cx, t.cz, range)) {
       if (exclude?.has(z)) continue;
       let score;
       switch (t.targeting) {
-        case 'nearest': score = Math.hypot(z.x - t.x, z.z - t.z); break;
+        case 'last': score = -this.zombies.threatDistance(z); break;
         case 'strongest': score = -z.hp; break;
-        case 'weakest': score = z.hp; break;
+        case 'nearest': score = Math.hypot(z.x - t.cx, z.z - t.cz); break;
         default: score = this.zombies.threatDistance(z);
       }
       if (score < bestScore) { bestScore = score; best = z; }
@@ -166,53 +274,92 @@ export class TowerSystem {
   }
 
   step(dt) {
+    this.time += dt;
     for (const t of this.#towers.values()) {
+      // Overclocked towers jam once the buff runs out.
+      for (const b of t.buffs) {
+        if (b.jamAfter && b.until <= this.time) {
+          t.jammedUntil = Math.max(t.jammedUntil, this.time + b.jamAfter);
+          b.jamAfter = 0;
+          this.events.emit('towerJammed', { tower: t });
+        }
+      }
+      if (t.buffs.length && t.buffs.every((b) => b.until <= this.time)) t.buffs.length = 0;
       t.cooldown = Math.max(0, t.cooldown - dt);
-      if (t.cooldown > 0) continue;
-      const first = this.#pick(t);
+      if (t.cooldown > 0 || this.time < t.jammedUntil) continue;
+      if (t.ammo < 1) {
+        const m = this.modsOf(t);
+        if (!m.freeAmmo) {
+          if (!t.empty) { t.empty = true; this.events.emit('towerEmpty', t); }
+          continue;
+        }
+      }
+      const m = this.modsOf(t);
+      const s = t.stats;
+      const range = s.range + m.rangeAdd;
+      const first = this.#pick(t, range);
       t.targetId = first ? first.id : 0;
       if (!first) continue;
-      t.facing = Math.atan2(first.x - t.x, first.z - t.z);
-      t.cooldown = t.stats.interval;
-      const type = this.types[t.type];
-      const s = t.stats;
-      const targets = [first];
-      const used = new Set(targets);
-      while (targets.length < s.targets) {
-        const next = this.#pick(t, used);
-        if (!next) break;
-        targets.push(next);
-        used.add(next);
+      t.facing = Math.atan2(first.x - t.cx, first.z - t.cz);
+      t.cooldown = (s.interval / (1 + m.attackSpeedPct / 100)) / m.gunk;
+      if (!m.freeAmmo) {
+        t.ammo = Math.max(0, t.ammo - 1);
+        if (t.ammo < this.rules.lowAmmo * s.maxAmmo && !t.lowWarned) {
+          t.lowWarned = true;
+          this.events.emit('towerLowAmmo', t);
+        }
       }
-      if (type.projectile.roll) {
-        // A rolling ball: dropped at the foot of the wall, it rolls straight on past the target.
-        const dx = first.x - t.x, dz = first.z - t.z, d = Math.hypot(dx, dz) || 1;
-        const k = 1 + 0.25 * (t.level - 1);
-        this.projectiles.fire({
-          ownerId: t.id, kind: type.projectile.kind,
-          from: { x: t.x + (dx / d) * 0.6, y: 0.35, z: t.z + (dz / d) * 0.6 },
-          speed: type.projectile.speed,
-          line: { dx: dx / d, dz: dz / d, length: s.range + type.projectile.extraLength, width: type.projectile.width, maxHits: 999 },
-          payload: { damage: s.damage, type: type.damageType, roll: type.projectile.roll * k, rollLift: type.projectile.rollLift, fx: 'earth-small' },
-        });
-        this.events.emit('towerAttack', { tower: t, targets: [first] });
-        continue;
-      }
-      for (const z of targets) {
-        this.projectiles.fire({
-          ownerId: t.id, kind: type.projectile.kind,
-          from: { x: t.x, y: 2.1, z: t.z },
-          target: z,
-          arc: type.projectile.arc ?? 0,
-          speed: type.projectile.speed,
-          payload: {
-            damage: s.damage, type: type.damageType, armorPen: s.armorPen,
-            radius: s.aoe, burn: s.burn, slow: s.slow, stun: s.stun,
-            fx: s.aoe ? `${t.type}-small` : undefined,
-          },
-        });
-      }
-      this.events.emit('towerAttack', { tower: t, targets });
+      this.#fire(t, first, range, m);
     }
+  }
+
+  #fire(t, first, range, m) {
+    const type = this.types[t.type];
+    const s = t.stats;
+    const payload = {
+      damage: s.damage * (1 + m.damagePct / 100), type: s.damageType, armorPen: s.armorPen,
+      radius: s.aoe, burn: s.burn, slow: s.slow, stun: s.stun, stunAll: s.stunAll, knock: s.knock, lift: s.lift,
+      bossMult: s.bossMult, freezeChance: s.freezeChance, freezeTime: s.freezeTime,
+      shred: s.shred, napalm: s.napalm, bleed: s.bleed,
+      critChance: s.critChance + m.critAdd / 100,
+      fx: s.aoe ? `${t.type}-small` : undefined,
+    };
+    if (type.projectile.kind === 'roller') {
+      // Rolling stones: dropped at the tower's foot, they roll straight on past the target.
+      const dx = first.x - t.cx, dz = first.z - t.cz, d = Math.hypot(dx, dz) || 1;
+      const ux = dx / d, uz = dz / d;
+      const P = type.projectile;
+      for (let b = 0; b < s.balls; b++) {
+        const off = s.balls > 1 ? (b - (s.balls - 1) / 2) * 0.9 : 0;
+        this.projectiles.fire({
+          ownerId: t.id, kind: 'roller',
+          from: { x: t.cx + ux * 0.6 - uz * off, y: 0.35, z: t.cz + uz * 0.6 + ux * off },
+          speed: P.speed,
+          line: { dx: ux, dz: uz, length: range + P.extraLength, width: P.width, maxHits: 999 },
+          payload: { ...payload, radius: 0, knock: P.roll, lift: P.rollLift, fx: 'earth-small' },
+        });
+      }
+      this.events.emit('towerAttack', { tower: t, targets: [first] });
+      return;
+    }
+    const targets = [first];
+    const used = new Set(targets);
+    while (targets.length < s.targets) {
+      const next = this.#pick(t, range, used);
+      if (!next) break;
+      targets.push(next);
+      used.add(next);
+    }
+    for (const z of targets) {
+      this.projectiles.fire({
+        ownerId: t.id, kind: type.projectile.kind,
+        from: { x: t.cx, y: 1.6, z: t.cz },
+        target: z,
+        arc: type.projectile.arc ?? 0,
+        speed: type.projectile.speed,
+        payload,
+      });
+    }
+    this.events.emit('towerAttack', { tower: t, targets });
   }
 }

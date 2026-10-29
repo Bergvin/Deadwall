@@ -1,84 +1,50 @@
 // Central gameplay configuration. Systems read numbers from here, never hard-code them.
+// The battlefields live in maps.js, enemies in enemies.js, towers in towers.js and the
+// ammo runner with his spells and perks in runner.js.
 
-export const MAP = {
-  width: 30,
-  height: 24,
-  /** Rows 0..spawnRows-1 are the zombie spawn zone (north). */
-  spawnRows: 3,
-  /** The castle's outer wall row; rows below it are the castle interior. */
-  castleWallRow: 21,
-  /** Gate column in the castle wall row. */
-  gateX: 15,
-  /** Impassable, unbuildable terrain (rocks, ruins). [x, y] cell pairs. */
-  blocked: [
-    [4, 7], [5, 7], [4, 8],
-    [24, 6], [25, 6],
-    [9, 13], [20, 12], [21, 12], [21, 13],
-    [2, 16], [27, 17],
-  ],
-};
+export { MAPS, MAP_RULES, mapById } from './maps.js';
+export { ZOMBIES, ELITE, WAVE_TABLE, WAVE_VARIANTS } from './enemies.js';
+export { TOWERS, TOWER_RULES, TARGETING } from './towers.js';
+export { RUNNER, SPELLS, SPELL_RANK, RUNNER_PERKS } from './runner.js';
+export { RARITIES, RARITY_INFO } from './rarities.js';
 
 export const ECONOMY = {
-  startingGold: 450,
-  /** Fraction of the build cost returned when selling a wall, scaled by its health ratio. */
-  sellRefund: 0.5,
-  /** Construction and repair cost multiplier while a wave is in progress. */
-  combatBuildMultiplier: 1.25,
-  /** Repair cost = missing HP fraction x build cost x this factor. */
-  repairCostFactor: 0.6,
-  /** Fraction of a hero's total investment returned on dismissal. */
-  heroRefund: 0.5,
+  startingGold: 300,
+  /** Tower and upgrade prices while a wave is being fought. */
+  combatBuildMultiplier: 1.1,
 };
 
-export const FORTRESS = {
-  gateMaxHp: 1500,
-  /** Gate HP fraction below which the HUD warns that the fortress is in danger. */
+/** The house the player protects. If it falls, the run is over. */
+export const HOUSE = {
+  /** Every zombie that reaches the house takes its `damage` off this (lives, in effect). */
+  maxHp: 100,
+  /** House HP fraction below which the HUD warns. */
   warnAt: 0.35,
-  /** Reinforcing the gate: each level adds maxHp (and heals that much). Costs escalate. */
-  reinforce: [
-    { cost: 150, addHp: 600 },
-    { cost: 300, addHp: 800 },
-    { cost: 550, addHp: 1000 },
-  ],
-  /** Gate repair: gold per missing HP (the gate is more expensive to fix than walls). */
-  repairCostPerHp: 0.35,
+  /** Repair (between waves only): gold per missing HP. */
+  repairCostPerHp: 4,
 };
-
-// Zombie, boss, elite and wave-composition config lives in enemies.js.
-export { ZOMBIES, ELITE, WAVE_TABLE, WAVE_VARIANTS } from './enemies.js';
 
 /** Run-wide bonuses from the Commander that the simulation reads (core/commander.js fills them). */
-export const BONUS = { killGoldPct: 0, artifactLuckPct: 0 };
-
-// Hero classes, rules and targeting modes live in heroes.js.
-export { HEROES, HERO_RULES, TARGETING } from './heroes.js';
-// Elemental towers and the champion hero rules live in towers.js.
-export { TOWERS, TOWER_RULES, CHAMPION } from './towers.js';
-
-// The hero's weapons, gear, loot, level-up abilities and knockback physics live in hero.js.
-export { WEAPON_STYLES, ITEM_NAMES, ITEM_RARITY, AFFIXES, LOOT, ABILITY_OFFER, HERO_ACTIVES, HERO_ABILITIES, PHYSICS } from './hero.js';
-export { RARITIES, RARITY_INFO } from './rarities.js';
+export const BONUS = { killGoldPct: 0, artifactLuckPct: 0, towerSlotAdd: 0 };
 
 export const WAVES = {
   /** Seconds before wave 1 starts on its own (the player can start it earlier). */
   firstPrepTime: 60,
   /** Seconds of preparation between waves. */
   prepTime: 25,
-  /** Enemy counts, bosses and scaling are in enemies.js (WAVE_TABLE). */
   /** Seconds between spawns at wave 1, shrinking toward minSpawnInterval. */
-  spawnInterval: 1.1,
-  spawnIntervalDecay: 0.06,
-  minSpawnInterval: 0.25,
+  spawnInterval: 1.15,
+  spawnIntervalDecay: 0.05,
+  minSpawnInterval: 0.3,
   /**
-   * Stragglers: once a wave has finished spawning, enemies still alive this many seconds
-   * later become enraged (faster, immune to knockback) so a wave can never be stalled by
-   * juggling enemies with knockback forever.
+   * Stragglers: enemies still alive this long after a wave finished spawning become
+   * enraged (faster, immune to knockback) so a wave can never be stalled forever.
    */
-  enrageAfter: 40,
+  enrageAfter: 45,
   enrageSpeedMult: 1.6,
   /** Gold for clearing a wave: base + perWave * wave. */
-  clearBonusBase: 30,
-  clearBonusPerWave: 10,
+  clearBonusBase: 35,
+  clearBonusPerWave: 12,
 };
 
 export const SCORE = {
@@ -86,60 +52,23 @@ export const SCORE = {
   perWaveCleared: 250,
 };
 
-/**
- * Wall types. All share the same modular pieces so mixed lines connect; each type has its
- * own tint and decorations (see render/wallView.js). Every wall can carry one tower, and
- * a 2x2 block of walls carries the champion hero (heroCapacity is per-wall occupancy).
- * armor: fraction of zombie damage ignored. thorns: damage per second dealt to every zombie
- * attacking it. arcane: aura that slows and pulses magic damage.
- */
-export const WALLS = {
-  stone: {
-    name: 'Stone Wall', short: 'Stone',
-    cost: 20, maxHp: 300, heroCapacity: 1, armor: 0,
-    description: 'Affordable basic wall. Moderate health, can carry a tower.',
-  },
-  reinforced: {
-    name: 'Reinforced Wall', short: 'Reinforced',
-    cost: 45, maxHp: 750, heroCapacity: 1, armor: 0.2,
-    description: 'Timber and iron braced. Very durable and resists heavy blows: the best base for towers.',
-  },
-  spiked: {
-    name: 'Spiked Wall', short: 'Spiked',
-    cost: 35, maxHp: 380, heroCapacity: 1, armor: 0,
-    thorns: 6,
-    description: 'Iron spikes wound every zombie that attacks it. Great against hordes.',
-  },
-  arcane: {
-    name: 'Arcane Wall', short: 'Arcane',
-    cost: 90, maxHp: 500, heroCapacity: 1, armor: 0.05,
-    arcane: { radius: 2.2, slow: 0.6, pulseDamage: 18, pulseInterval: 2.5 },
-    description: 'Glowing runes slow nearby zombies and pulse magic damage at them.',
-  },
-};
-
-/**
- * Wall upgrades (levels 2 and 3). Cost is a multiple of the wall's base cost; each level
- * raises max HP and strengthens the type's special effect.
- */
-export const WALL_UPGRADES = {
-  maxLevel: 3,
-  costMult: [0.9, 1.6],
-  hpMult: 1.35,
-  thornsMult: 1.5,
-  arcaneDamageMult: 1.4,
-  arcaneRadiusAdd: 0.3,
-};
-
-export const PATHING = {
-  /** Extra path cost for routing through a wall instead of around it (zombies attack it). */
-  wallBaseCost: 12,
-  /** Additional cost per wall hit point, so stronger walls are avoided more. */
-  wallCostPerHp: 0.02,
+/** Knockback and air time (Gale tower, rolling stones). */
+export const PHYSICS = {
+  gravity: 22,
+  /** How fast a shove along the road dies out (per second). */
+  friction: 2.5,
+  /** Bosses and elites only take this fraction of a shove. */
+  bossResist: 0.15,
+  eliteResist: 0.6,
+  /** Each recent shove makes the next one weaker; stacks fade at shoveRecovery per second. */
+  shoveResist: 0.5,
+  shoveRecovery: 0.7,
+  /** Fall damage: fraction of max HP per cell of fall height (from 1 cell up). */
+  fallDamagePct: 0.05,
 };
 
 /** Game speed buttons in the top bar (multipliers of the simulation clock). */
-export const GAME_SPEEDS = [1, 3, 5];
+export const GAME_SPEEDS = [1, 2, 3];
 
 export const CAMERA = {
   pitchDeg: 55,

@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Simulation } from '../src/core/simulation.js';
-import { PHASE, waveComposition } from '../src/core/waves.js';
-import { ZSTATE } from '../src/core/zombies.js';
-import { WALLS, WALL_UPGRADES, ZOMBIES, WAVE_TABLE, ELITE, FORTRESS, MAP } from '../src/config/game.js';
+import { Simulation } from '../../src-classic/core/simulation.js';
+import { PHASE, waveComposition } from '../../src-classic/core/waves.js';
+import { ZSTATE } from '../../src-classic/core/zombies.js';
+import { WALLS, WALL_UPGRADES, ZOMBIES, WAVE_TABLE, ELITE, FORTRESS, MAP } from '../../src-classic/config/game.js';
 import { buildBlock } from './helpers.js';
 
 const rich = (seed = 1) => {

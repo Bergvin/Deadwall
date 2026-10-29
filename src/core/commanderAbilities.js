@@ -10,9 +10,9 @@ const RETRY = 1;
 const PACK_SAMPLES = 60;
 
 export class CommanderAbilitySystem {
-  /** @param {{powers: Record<string, number>, zombies, walls, fortress, economy, waves, combat, events, defs?}} deps */
-  constructor({ powers, zombies, walls, fortress, economy, waves, combat, events, defs = ABILITIES }) {
-    Object.assign(this, { zombies, walls, fortress, economy, waves, combat, events, defs });
+  /** @param {{powers: Record<string, number>, zombies, towers, house, economy, waves, combat, events, size, defs?}} deps */
+  constructor({ powers, zombies, towers, house, economy, waves, combat, events, size = { width: 30, height: 24 }, defs = ABILITIES }) {
+    Object.assign(this, { zombies, towers, house, economy, waves, combat, events, size, defs });
     this.list = Object.entries(powers)
       .filter(([id, p]) => defs[id] && p > 0)
       // The first activation comes halfway into a wave, then on the full interval.
@@ -24,7 +24,7 @@ export class CommanderAbilitySystem {
         if (!a.def.onWaveClear) continue;
         const gold = Math.round(a.def.goldPerWave * a.power * wave);
         this.economy.earn(gold, `ability:${a.id}`);
-        this.#announce(a, this.fortress.gate.x + 0.5, this.fortress.gate.y + 0.5, `+${gold}`);
+        this.#announce(a, this.house.x, this.house.z, `+${gold}`);
       }
     });
   }
@@ -104,24 +104,23 @@ export class CommanderAbilitySystem {
           if (d.slow) this.zombies.applySlow(z, d.slow, d.slowDuration * Math.sqrt(p));
           if (d.stun) this.zombies.applyStun(z, Math.min(4, d.stun * Math.sqrt(p)));
         }
-        const m = this.walls.grid;
-        const cx = (m?.width ?? 30) / 2, cz = (m?.height ?? 24) / 2;
+        const cx = this.size.width / 2, cz = this.size.height / 2;
         this.events.emit('impactFx', { x: cx, z: cz, radius: 9, fx: d.fx });
         this.#announce(a, cx, cz);
         return true;
       }
-      case 'walls': {
-        const hurt = [...this.walls.all()].filter((w) => w.hp < w.maxHp);
-        if (!hurt.length) return false;
-        for (const w of hurt) w.hp = Math.min(w.maxHp, w.hp + w.maxHp * d.healPct * p);
-        this.#announce(a, hurt[0].x + 0.5, hurt[0].y + 0.5);
+      case 'towers': {
+        const low = [...this.towers.all()].filter((t) => t.ammo < t.stats.maxAmmo);
+        if (!low.length) return false;
+        for (const t of low) this.towers.refill(t.id, t.stats.maxAmmo * d.ammoPct * p);
+        this.#announce(a, low[0].cx, low[0].cz);
         return true;
       }
-      case 'gate': {
-        const f = this.fortress;
-        if (f.destroyed || f.hp >= f.maxHp) return false;
-        f.hp = Math.min(f.maxHp, f.hp + f.maxHp * d.healPct * p);
-        this.#announce(a, f.gate.x + 0.5, f.gate.y + 0.5);
+      case 'house': {
+        const h = this.house;
+        if (h.destroyed || h.hp >= h.maxHp) return false;
+        h.heal(h.maxHp * d.healPct * p);
+        this.#announce(a, h.x, h.z);
         return true;
       }
       default:

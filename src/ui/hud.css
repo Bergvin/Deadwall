@@ -416,3 +416,81 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
   padding: 5px 14px; border-radius: 16px; color: var(--muted); background: rgba(20, 18, 16, 0.9); border: 1px solid var(--border); cursor: pointer; }
 .heronotice.ready { color: var(--gold); border-color: var(--gold); animation: glowpulse 1.6s ease-in-out infinite; }
 .heronotice[hidden] { display: none; }
+
+/* --- tower defense (current game) --- */
+.td .buildbar { bottom: 12px; }
+.card.tcard { width: 128px; }
+.card .ticon { font-size: 15px; }
+.stat.slots.alert .value { color: var(--gold); }
+.stat.fortress.hit .bar { box-shadow: 0 0 0 2px var(--red); }
+.stat.mapname .value { color: #d8c8a0; font-family: var(--font); font-size: 14px; }
+.panel .bar.ammo > div { background: #5aa8ff; }
+.panel .specrow { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.panel .specbtn { margin: 0; text-align: left; padding: 6px; }
+.panel .specbtn b { display: block; font-size: 13px; }
+.panel .specbtn span { display: block; font-size: 11px; color: var(--muted); line-height: 1.3; margin-top: 2px; }
+.panel .specbtn .c { color: var(--gold); margin-top: 4px; }
+.spec-a { color: #ffc23d; }
+.spec-b { color: #7fd8ff; }
+.panel .specbtn.spec-a { border-color: #8a6a1a; }
+.panel .specbtn.spec-b { border-color: #2a6a8a; }
+.panel .sendbtn { border-color: #2a5a8a; color: #b8d8ff; }
+.panel .spelltext { font-size: 11px; color: #cfc4ad; margin: -2px 0 6px; }
+.portrait.runnerface { background: linear-gradient(135deg, #d8802a, #8a3a1a); font-size: 24px; }
+.portrait[class*="t-"] { background: linear-gradient(135deg, #4a4033, #24201a); font-size: 22px; }
+
+.runnerbar { position: absolute; left: 12px; bottom: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; max-width: 300px; }
+.runnerbar .rhead { display: flex; gap: 8px; align-items: center; font: inherit; color: var(--text); background: none; border: 0; cursor: pointer; text-align: left; padding: 0 4px 0 0; }
+.runnerbar .rface { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; background: radial-gradient(circle at 40% 35%, #f0a050, #8a3a1a); border: 2px solid #ffd080; animation: wobble 1.2s ease-in-out infinite; }
+@keyframes wobble { 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+.runnerbar .rname { font-family: var(--font); font-size: 14px; }
+.runnerbar .rsub { font-size: 11px; color: var(--muted); }
+.runnerbar .bar.xp { width: 130px; height: 5px; margin: 3px 0; }
+.runnerbar .crates { font-size: 13px; color: #d8a868; letter-spacing: 1px; }
+.runnerbar .spells { display: flex; flex-wrap: wrap; gap: 4px; }
+.runnerbar .spell { width: 66px; height: 50px; }
+.runnerbar .spell .sicon { font-size: 16px; display: block; }
+.runnerbar .spell .aname { font-size: 10px; }
+.runnerbar .spell .aname i { color: var(--gold); font-style: normal; }
+.runnerbar .spell .auto { display: none; position: absolute; left: 3px; bottom: 2px; font-size: 8px; letter-spacing: 1px; color: #7cff9a; }
+.runnerbar .spell.autoon { border-color: #3a8a50; }
+.runnerbar .spell.autoon .auto { display: block; }
+.runnerbar .pickbtn { position: absolute; left: 0; bottom: calc(100% + 6px); width: auto; margin: 0; color: var(--gold); border-color: var(--gold); white-space: nowrap; background: var(--bg-raised); }
+.runnerbar .pickbtn[hidden] { display: none; }
+.runnerbar .pickbtn.glow { animation: glowpulse 1.6s ease-in-out infinite; }
+@keyframes glowpulse { 50% { box-shadow: 0 0 14px rgba(232, 182, 76, 0.7); } }
+.td .help { left: auto; right: 12px; bottom: 12px; }
+.td .panel { top: 58px; }
+
+.ammoalerts { position: absolute; top: 88px; left: 12px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 40vw; }
+.ammoalerts[hidden] { display: none; }
+.ammoalerts .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+.ammochip { border-color: var(--gold); }
+.ammochip.empty { border-color: var(--red); color: #ffb0a8; animation: glowpulse 1s infinite; }
+.ammochip.ordered { border-color: #3a8a50; color: #a8f0b8; }
+
+.floater.refill { color: #8fc8ff; font-size: 12px; }
+.floater.bonk { color: #ffe060; font-size: 18px; font-family: var(--font); text-shadow: 0 0 6px #000, 0 2px 0 #8a4a10; }
+.floater.cast { color: #7cff9a; font-family: var(--font); font-size: 15px; }
+.floater.dmg { font-size: 12px; }
+
+.screen .maps { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin: 10px 0 18px; }
+.mapcard { position: relative; font: inherit; color: var(--text); text-align: left; padding: 10px; border-radius: 6px; cursor: pointer; background: rgba(30, 28, 25, 0.95); border: 1px solid var(--border-hi); transition: transform 0.12s; }
+.mapcard:hover:not(:disabled) { transform: translateY(-3px); border-color: var(--gold); box-shadow: 0 0 14px rgba(232, 182, 76, 0.35); }
+.mapcard.locked { opacity: 0.5; cursor: not-allowed; }
+.mapcard .mnum { position: absolute; top: 6px; right: 8px; color: var(--muted); font-family: var(--font); }
+.mapcard .mname { font-family: var(--font); font-size: 16px; margin-bottom: 6px; }
+.mapcard .mthumb { width: 100%; height: auto; border-radius: 3px; border: 1px solid var(--border); }
+.mapcard .mdesc { font-size: 12px; color: #cfc4ad; margin-top: 6px; line-height: 1.35; }
+.mapcard .mmods { font-size: 11px; color: #ffb070; margin-top: 4px; }
+.mapcard .mbest { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.mapcard .mbest b { color: var(--gold); }
+.mapcard .mlock { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.screen .box.wide { width: min(980px, 94vw); box-sizing: border-box; }
+.screen .classicbtn { border-color: #6a5a40; color: #c8b890; }
+.screen .newrec.unlock { color: #7cff9a; }
+@media (max-width: 1500px) { .card.tcard { width: 104px; } .runnerbar { max-width: 220px; } .runnerbar .spell { width: 50px; } .runnerbar .spell .aname { display: none; } }
+@media (max-width: 1100px) { .runnerbar .rname { font-size: 12px; } }
+/* Tall screens (game over with an artifact choice) scroll instead of being cut off. */
+.screen { overflow-y: auto; align-items: flex-start; padding: 16px 0; box-sizing: border-box; }
+.screen .box { margin: auto; }

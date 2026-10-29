@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Simulation } from '../src/core/simulation.js';
-import { PHASE } from '../src/core/waves.js';
-import { ZSTATE } from '../src/core/zombies.js';
-import { MAP, ZOMBIES, HEROES, WAVES, WAVE_TABLE, ELITE } from '../src/config/game.js';
-import { waveComposition } from '../src/core/waves.js';
-import { sanitize, loadSave, writeSave, recordRun } from '../src/core/save.js';
+import { Simulation } from '../../src-classic/core/simulation.js';
+import { PHASE } from '../../src-classic/core/waves.js';
+import { ZSTATE } from '../../src-classic/core/zombies.js';
+import { MAP, ZOMBIES, HEROES, WAVES, WAVE_TABLE, ELITE } from '../../src-classic/config/game.js';
+import { waveComposition } from '../../src-classic/core/waves.js';
+import { sanitize, loadSave, writeSave, recordRun } from '../../src-classic/core/save.js';
 import { buildBlock } from './helpers.js';
 
 const DT = 1 / 60;

@@ -3,19 +3,22 @@
 import * as THREE from 'three';
 
 /**
- * Paints the battlefield ground: dark earth with mottled patches, moss, scattered stones
- * and a worn dirt road from the north toward the gate. The texture spans the whole ground
- * plane (map plus margin) so it needs no tiling.
- * @param {{width:number,height:number,gateX:number,castleWallRow:number}} map
+ * Paints one map's ground: dark earth with mottled patches, moss and stones, worn dirt roads
+ * along the zombie paths and dark water in the river cells. The texture spans the whole
+ * ground plane (map plus margin) so it needs no tiling.
+ * @param {{width:number,height:number}} size
+ * @param {{points:{x,z}[]}[]} paths road polylines (world units)
+ * @param {{x:number,y:number}[]} water river cells
  * @param {number} margin  extra world units of ground on each side
  */
-export function makeGroundTexture(map, margin) {
-  const W = map.width + margin * 2, H = map.height + margin * 2;
+export function makeGroundTexture(size, paths, water, margin) {
+  const W = size.width + margin * 2, H = size.height + margin * 2;
   const ppu = 24; // pixels per world unit
   const cv = document.createElement('canvas');
   cv.width = Math.min(2048, W * ppu);
   cv.height = Math.min(2048, H * ppu);
   const sx = cv.width / W, sy = cv.height / H;
+  const X = (x) => (x + margin) * sx, Y = (z) => (z + margin) * sy;
   const g = cv.getContext('2d');
   let seed = 11;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -29,22 +32,33 @@ export function makeGroundTexture(map, margin) {
     g.fillStyle = grd;
     g.fillRect(x - r, y - r, r * 2, r * 2);
   };
-  // Mottled earth and moss.
   for (let i = 0; i < 420; i++) blob(rnd() * cv.width, rnd() * cv.height, (0.6 + rnd() * 2.6) * sx, 'rgba(18,16,12,A)', 0.35);
   for (let i = 0; i < 260; i++) blob(rnd() * cv.width, rnd() * cv.height, (0.5 + rnd() * 2) * sx, 'rgba(70,62,46,A)', 0.25);
   for (let i = 0; i < 140; i++) blob(rnd() * cv.width, rnd() * cv.height, (0.4 + rnd() * 1.6) * sx, 'rgba(48,62,34,A)', 0.3);
 
-  // Dirt road: a wavering band from the north edge to the gate.
-  const gx = (map.gateX + 0.5 + margin) * sx;
-  const top = margin * sy * 0.4, bottom = (map.castleWallRow + margin) * sy;
-  for (let y = top; y < bottom; y += 3) {
-    const t = (y - top) / (bottom - top);
-    const x = gx + Math.sin(t * 5.2) * 3.2 * sx * (1 - t * 0.8);
-    const w = (1.3 + 0.4 * Math.sin(t * 17)) * sx;
-    g.fillStyle = 'rgba(78,64,46,0.16)';
-    g.fillRect(x - w, y, w * 2, 3);
+  // Water: dark, slightly blue cells with soft edges.
+  for (const c of water) {
+    g.fillStyle = 'rgba(18,34,46,0.95)';
+    g.fillRect(X(c.x) - 1, Y(c.y) - 1, sx + 2, sy + 2);
   }
-  // Pebbles and grit.
+  for (const c of water) blob(X(c.x + 0.5), Y(c.y + 0.5), sx * 0.9, 'rgba(60,110,140,A)', 0.18);
+
+  // Roads: a wide dark rim, the packed dirt, then wheel ruts and grit on top.
+  const stroke = (width, style) => {
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    g.lineWidth = width * sx;
+    g.strokeStyle = style;
+    for (const p of paths) {
+      g.beginPath();
+      p.points.forEach((q, i) => (i ? g.lineTo(X(q.x), Y(q.z)) : g.moveTo(X(q.x), Y(q.z))));
+      g.stroke();
+    }
+  };
+  stroke(2.3, 'rgba(30,24,18,0.55)');
+  stroke(1.8, 'rgba(92,74,52,0.85)');
+  stroke(1.2, 'rgba(110,90,64,0.55)');
+  stroke(0.12, 'rgba(60,46,32,0.6)');
   for (let i = 0; i < 2600; i++) {
     const v = 40 + Math.floor(rnd() * 50);
     g.fillStyle = `rgba(${v},${v - 4},${v - 10},${0.25 + rnd() * 0.35})`;
@@ -74,9 +88,12 @@ export class Ambience {
   /**
    * @param {THREE.Scene} scene
    * @param {{lights: THREE.PointLight[], emitters: {x,y,z}[]}} world
-   * @param {{width:number,height:number,spawnRows:number}} map
+   * @param {{width:number,height:number}} map
+   * @param {{x:number,z:number}[]} spawns road starts (a red glow where the dead come from)
    */
-  constructor(scene, world, map) {
+  constructor(scene, world, map, spawns = []) {
+    this.scene = scene;
+    this.objects = [];
     this.time = 0;
     this.lights = world.lights.map((l) => ({ light: l, base: l.intensity, phase: Math.random() * 100 }));
     const disc = softDiscTexture();
@@ -94,6 +111,7 @@ export class Ambience {
     }));
     this.emberPoints.frustumCulled = false;
     scene.add(this.emberPoints);
+    this.objects.push(this.emberPoints);
 
     // Fog wisps drifting over the battlefield (denser in the north).
     this.wisps = [];
@@ -108,18 +126,28 @@ export class Ambience {
       m.position.set(Math.random() * map.width, 0.25 + Math.random() * 0.6, Math.random() * map.height * 0.75);
       m.renderOrder = 2;
       scene.add(m);
+      this.objects.push(m);
       this.wisps.push({ m, vx: 0.15 + Math.random() * 0.25, w: map.width });
     }
 
-    // Blood-red glow over the spawn zone.
-    const glow = new THREE.Mesh(
-      new THREE.PlaneGeometry(map.width + 4, map.spawnRows + 3),
-      new THREE.MeshBasicMaterial({ color: 0xa0201a, map: disc, transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }),
-    );
-    glow.rotation.x = -Math.PI / 2;
-    glow.position.set(map.width / 2, 0.04, map.spawnRows / 2);
-    scene.add(glow);
-    this.glow = glow;
+    // Blood-red glow where each road enters the map.
+    this.glows = [];
+    for (const sp of spawns) {
+      const glow = new THREE.Mesh(
+        new THREE.PlaneGeometry(5, 5),
+        new THREE.MeshBasicMaterial({ color: 0xa0201a, map: disc, transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }),
+      );
+      glow.rotation.x = -Math.PI / 2;
+      glow.position.set(Math.min(map.width - 0.5, Math.max(0.5, sp.x)), 0.04, Math.min(map.height - 0.5, Math.max(0.5, sp.z)));
+      scene.add(glow);
+      this.objects.push(glow);
+      this.glows.push(glow);
+    }
+  }
+
+  dispose() {
+    for (const o of this.objects) this.scene.remove(o);
+    this.objects.length = 0;
   }
 
   update(dt) {
@@ -158,6 +186,6 @@ export class Ambience {
       s.m.position.x += s.vx * dt;
       if (s.m.position.x > s.w + 6) s.m.position.x = -6;
     }
-    this.glow.material.opacity = 0.32 + 0.1 * Math.sin(t * 1.3);
+    for (const gl of this.glows) gl.material.opacity = 0.32 + 0.1 * Math.sin(t * 1.3);
   }
 }

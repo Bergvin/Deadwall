@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as CFG from '../src/config/game.js';
-import { Simulation } from '../src/core/simulation.js';
-import { RARITIES, HERO_ABILITIES, WEAPON_STYLES, AFFIXES } from '../src/config/game.js';
-import { makeItem, rollItem, rollAbilityOffer, heroMods, lootOdds, itemLines } from '../src/core/heroBuild.js';
-import { createRng } from '../src/core/rng.js';
+import * as CFG from '../../src-classic/config/game.js';
+import { Simulation } from '../../src-classic/core/simulation.js';
+import { RARITIES, HERO_ABILITIES, WEAPON_STYLES, AFFIXES } from '../../src-classic/config/game.js';
+import { makeItem, rollItem, rollAbilityOffer, heroMods, lootOdds, itemLines } from '../../src-classic/core/heroBuild.js';
+import { createRng } from '../../src-classic/core/rng.js';
 import { buildBlock } from './helpers.js';
 
 const seq = (seed) => { const r = createRng(seed); return () => r.next(); };

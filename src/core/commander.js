@@ -315,33 +315,23 @@ export function applyBonuses(base, b = {}, abilities = {}) {
   const more = (k) => 1 + pct(k);
   const less = (k) => 1 - Math.min(COMMANDER.maxReductionPct, b[k] ?? 0) / 100;
 
-  // Damage, attack speed and range help every defender: towers and the champion.
-  for (const h of Object.values(c.HEROES)) {
-    h.damage *= more('heroDamagePct');
-    h.attackInterval /= more('heroAttackSpeedPct');
-    h.hp = Math.round(h.hp * more('heroHpPct'));
-    h.range += b.heroRangeAdd ?? 0;
-    h.critChance += pct('heroCritAdd');
-    for (const a of Object.values(h.abilities ?? {})) a.cooldown *= less('abilityCooldownPct');
-  }
-  for (const t of Object.values(c.TOWERS ?? {})) {
-    t.damage *= more('heroDamagePct');
-    if (t.burn) t.burn.dps *= more('heroDamagePct');
-    t.interval /= more('heroAttackSpeedPct');
-    t.range += b.heroRangeAdd ?? 0;
+  for (const t of Object.values(c.TOWERS)) {
+    t.damage *= more('towerDamagePct');
+    if (t.burn) t.burn.dps *= more('towerDamagePct');
+    t.interval /= more('towerSpeedPct');
+    t.range += b.towerRangeAdd ?? 0;
+    t.ammo = Math.round(t.ammo * more('ammoPct'));
     t.cost = Math.max(1, Math.round(t.cost * less('towerCostPct')));
   }
-  // The hero's active abilities (picked during a run) recharge faster too.
-  for (const a of Object.values(c.HERO_ACTIVES ?? {})) a.cooldown *= less('abilityCooldownPct');
-  c.HERO_RULES.xpPerDamage *= more('heroXpPct');
+  c.TOWER_RULES.critChance = (c.TOWER_RULES.critChance ?? 0) + pct('towerCritAdd');
+  c.TOWER_RULES.upgradeBase *= less('upgradeCostPct');
+  c.RUNNER.speed *= more('runnerSpeedPct');
+  c.RUNNER.crates += Math.round(b.runnerCrateAdd ?? 0);
+  c.RUNNER.killXp *= more('runnerXpPct');
+  c.RUNNER.waveClearLevelFraction *= more('runnerXpPct');
+  for (const sp of Object.values(c.SPELLS)) sp.cooldown *= less('spellCooldownPct');
 
-  for (const w of Object.values(c.WALLS)) {
-    w.maxHp = Math.round(w.maxHp * more('wallHpPct'));
-    w.cost = Math.max(1, Math.round(w.cost * less('wallCostPct')));
-    if (w.thorns) w.thorns *= more('thornsPct');
-    if (w.arcane) w.arcane.pulseDamage *= more('arcanePct');
-  }
-  c.FORTRESS.gateMaxHp = Math.round(c.FORTRESS.gateMaxHp * more('gateHpPct'));
+  c.HOUSE.maxHp = Math.round(c.HOUSE.maxHp * more('houseHpPct'));
   c.ECONOMY.startingGold += Math.round(b.startingGoldAdd ?? 0);
   c.WAVES.clearBonusBase *= more('waveBonusPct');
   c.WAVES.clearBonusPerWave *= more('waveBonusPct');
@@ -349,11 +339,10 @@ export function applyBonuses(base, b = {}, abilities = {}) {
   c.WAVES.firstPrepTime += b.prepTimeAdd ?? 0;
 
   for (const z of Object.values(c.ZOMBIES)) {
-    z.xp *= more('heroXpPct');
     z.speed *= less('enemySpeedPct');
     z.hp = Math.max(1, Math.round(z.hp * less('enemyHpPct')));
   }
-  c.BONUS = { ...c.BONUS, killGoldPct: b.killGoldPct ?? 0 };
+  c.BONUS = { ...c.BONUS, killGoldPct: b.killGoldPct ?? 0, towerSlotAdd: Math.round(b.towerSlotAdd ?? 0) };
   c.COMMANDER_ABILITIES = { ...abilities };
   return c;
 }

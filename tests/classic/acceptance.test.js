@@ -2,10 +2,10 @@
 // See docs/acceptance.md for the full checklist and where each item is verified.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Simulation } from '../src/core/simulation.js';
-import { PHASE } from '../src/core/waves.js';
-import { GameLoop } from '../src/core/loop.js';
-import { MAP, WAVES, HEROES, TOWERS } from '../src/config/game.js';
+import { Simulation } from '../../src-classic/core/simulation.js';
+import { PHASE } from '../../src-classic/core/waves.js';
+import { GameLoop } from '../../src-classic/core/loop.js';
+import { MAP, WAVES, HEROES, TOWERS } from '../../src-classic/config/game.js';
 import { buildBlock } from './helpers.js';
 
 const rich = (seed = 1) => {

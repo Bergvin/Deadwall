@@ -1,20 +1,24 @@
-// Static scenery: the castle along the south edge, terrain obstacles and set dressing.
+// Scenery of one map: the house, rocks, river, set dressing, torches at the house and
+// the painted ground (roads). Built per run because every map looks different.
 import * as THREE from 'three';
 import { TERRAIN } from '../core/grid.js';
 import { PALETTE } from './setup.js';
+import { makeGroundTexture } from './ambience.js';
 
-const R90 = Math.PI / 2;
+/** Size of the house: the Kenney square tower stretched over its 2x2 cells. */
+const HOUSE_SCALE = { xz: 1.75, y: 1.15 };
 
 /**
  * @param {THREE.Scene} scene
  * @param {import('./assets.js').AssetLibrary} assets
- * @param {import('../core/grid.js').Grid} grid
- * @param {typeof import('../config/game.js').MAP} map
+ * @param {import('../core/simulation.js').Simulation} sim
+ * @param {THREE.Mesh} ground the shared ground plane (gets this map's texture)
  */
-export function buildWorld(scene, assets, grid, map) {
+export function buildWorld(scene, assets, sim, ground) {
   const root = new THREE.Group();
   root.name = 'world';
   scene.add(root);
+  const grid = sim.grid;
   const place = (name, x, z, rotY = 0, y = 0, scale = 1) => {
     const o = assets.instance(name);
     o.position.set(x, y, z);
@@ -24,79 +28,83 @@ export function buildWorld(scene, assets, grid, map) {
     return o;
   };
 
-  // Tinted ground strips: spawn zone (north) and castle interior (south).
-  const strip = (z0, z1, color, opacity) => {
-    const m = new THREE.Mesh(
-      new THREE.PlaneGeometry(map.width, z1 - z0),
-      new THREE.MeshStandardMaterial({ color, roughness: 1, transparent: true, opacity }),
-    );
-    m.rotation.x = -Math.PI / 2;
-    m.position.set(map.width / 2, 0.005, (z0 + z1) / 2);
+  // Ground: roads and water painted into one texture.
+  const water = [];
+  for (let y = 0; y < grid.height; y++) for (let x = 0; x < grid.width; x++) if (grid.terrainAt(x, y) === TERRAIN.WATER) water.push({ x, y });
+  const oldMap = ground.material.map;
+  ground.material.map = makeGroundTexture(grid, sim.paths, water, 20);
+  ground.material.color.set(0xffffff);
+  ground.material.needsUpdate = true;
+  oldMap?.dispose();
+  // A faint sheen over the water.
+  if (water.length) {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x2a5a78, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.35 });
+    const geo = new THREE.PlaneGeometry(1, 1);
+    geo.rotateX(-Math.PI / 2);
+    const m = new THREE.InstancedMesh(geo, mat, water.length);
+    const mx = new THREE.Matrix4();
+    water.forEach((c, i) => m.setMatrixAt(i, mx.makeTranslation(c.x + 0.5, 0.03, c.y + 0.5)));
     m.receiveShadow = true;
     root.add(m);
+  }
+
+  // The house: a stout stone keep with a flag, its door facing the first road's end.
+  const h = sim.house;
+  const end = sim.paths[0].points.at(-1);
+  const doorAngle = Math.atan2(end.x - h.x, end.z - h.z);
+  const house = new THREE.Group();
+  house.position.set(h.x, 0, h.z);
+  root.add(house);
+  const piece = (name, y) => {
+    const o = assets.instance(name);
+    o.scale.set(HOUSE_SCALE.xz, HOUSE_SCALE.y, HOUSE_SCALE.xz);
+    o.position.y = y;
+    house.add(o);
+    return o;
   };
-  strip(0, map.spawnRows, PALETTE.groundSpawn, 0.55);
-  strip(map.castleWallRow, map.height, PALETTE.groundCastle, 0.7);
+  piece('towerBase', 0);
+  piece('towerMid', 1.01 * HOUSE_SCALE.y);
+  piece('towerRoof', 2.02 * HOUSE_SCALE.y);
+  const flag = assets.instance('flag');
+  flag.position.y = 3.2 * HOUSE_SCALE.y;
+  house.add(flag);
+  house.rotation.y = doorAngle;
 
-  // Castle wall: east-west wall with towers every 5 cells, two towers flanking the gate.
-  const row = map.castleWallRow;
-  const z = row + 0.5;
-  const gx = map.gateX;
-  let gate = null;
-  for (let x = 0; x < map.width; x++) {
-    const cx = x + 0.5;
-    if (x === gx) {
-      gate = place('gateDoor', cx, z, 0, 0, 1);
-      continue;
-    }
-    const isTower = x === 0 || x === map.width - 1 || x === gx - 1 || x === gx + 1 || (x % 6 === 3);
-    if (isTower) {
-      place('towerBase', cx, z);
-      place('towerMid', cx, z, 0, 1.01);
-      place('towerTop', cx, z, 0, 2.02);
-      if (x === gx - 1 || x === gx + 1) place('flag', cx, z, 0, 3.0);
-    } else {
-      place('wallStraight', cx, z, R90);
-    }
-  }
-  // A keep behind the gate.
-  for (const [dx, dz] of [[-2, 1.5], [2, 1.5]]) {
-    place('towerBase', gx + 0.5 + dx, row + 0.5 + dz);
-    place('towerMid', gx + 0.5 + dx, row + 0.5 + dz, 0, 1.01);
-    place('towerRoof', gx + 0.5 + dx, row + 0.5 + dz, 0, 2.02);
-  }
-
-  // Braziers either side of the gate, outside the wall, and torches along the castle wall.
-  // Their lights flicker and they emit embers (see ambience.js).
+  // Torches by the door; their light flickers and they throw embers (see ambience.js).
   const lights = [], emitters = [];
-  for (const dx of [-1, 1]) {
-    const bx = gx + 0.5 + dx * 1.6;
-    place('fireBasket', bx, row - 0.2);
-    const light = new THREE.PointLight(PALETTE.torch, 8, 6, 1.6);
-    light.position.set(bx, 1.2, row - 0.2);
+  const fx = Math.sin(doorAngle), fz = Math.cos(doorAngle);
+  for (const side of [-1, 1]) {
+    const bx = h.x + fx * 1.3 + fz * side * 1.1, bz = h.z + fz * 1.3 - fx * side * 1.1;
+    if (!grid.isWalkable(Math.floor(bx), Math.floor(bz)) || grid.terrainAt(Math.floor(bx), Math.floor(bz)) === TERRAIN.ROAD) continue;
+    place('fireBasket', bx, bz, 0, 0, 0.7);
+    const light = new THREE.PointLight(PALETTE.torch, 7, 6, 1.6);
+    light.position.set(bx, 1.1, bz);
     root.add(light);
     lights.push(light);
-    emitters.push({ x: bx, y: 0.9, z: row - 0.2 }, { x: bx, y: 0.9, z: row - 0.2 });
+    emitters.push({ x: bx, y: 0.8, z: bz });
   }
-  for (let x = 3; x < map.width; x += 6) {
-    const light = new THREE.PointLight(PALETTE.torch, 5, 5, 1.6);
-    light.position.set(x + 0.5, 1.8, row - 0.1);
+  const glow = new THREE.PointLight(PALETTE.torch, 10, 9, 1.4);
+  glow.position.set(h.x, 2.6, h.z);
+  root.add(glow);
+  lights.push(glow);
+
+  // Where the roads come in: braziers and gravestones.
+  for (const p of sim.paths) {
+    const a = p.points[0];
+    const x = Math.min(grid.width - 0.4, Math.max(0.4, a.x)), z = Math.min(grid.height - 0.4, Math.max(0.4, a.z));
+    const d = p.segs[0];
+    for (const side of [-1, 1]) {
+      const gx = x - d.dz * side * 1.5, gz = z + d.dx * side * 1.5;
+      place('gravestone', gx, gz, Math.atan2(d.dx, d.dz) + side * 0.3, 0, 0.9);
+    }
+    const light = new THREE.PointLight(0xc03020, 5, 6, 1.6);
+    light.position.set(x, 1, z);
     root.add(light);
     lights.push(light);
-    emitters.push({ x: x + 0.5, y: 1.6, z: row - 0.15 });
-  }
-  // Braziers just outside the battlefield edges light the flanks without blocking cells.
-  for (const [bx, bz] of [[-0.8, 8.5], [map.width + 0.8, 9.5], [-0.8, 16.5], [map.width + 0.8, 15.5]]) {
-    place('fireBasket', bx, bz, 0, 0, 0.8);
-    const light = new THREE.PointLight(PALETTE.torch, 4, 4.5, 1.6);
-    light.position.set(bx, 1, bz);
-    root.add(light);
-    lights.push(light);
-    emitters.push({ x: bx, y: 0.75, z: bz });
   }
 
-  // Terrain obstacles: rocks on BLOCKED cells.
-  const rockModels = ['rocksLarge', 'rocksSmall'];
+  // Rocks on blocked cells.
+  const rockModels = ['rocksLarge', 'rocksSmall', 'rocks'];
   let k = 0;
   for (let y = 0; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
@@ -105,18 +113,26 @@ export function buildWorld(scene, assets, grid, map) {
     }
   }
 
-  // Dead trees and debris outside the playable area (decorative, deterministic layout).
-  const rand = mulberry32(7);
-  for (let i = 0; i < 70; i++) {
-    const side = i % 3;
+  // Dead trees and debris around the battlefield (deterministic per map).
+  const rand = mulberry32(7 + sim.map.id.length * 31);
+  for (let i = 0; i < 90; i++) {
+    const side = i % 4;
     let x, zz;
-    if (side === 0) { x = -1 - rand() * 6; zz = rand() * map.height; }
-    else if (side === 1) { x = map.width + 1 + rand() * 6; zz = rand() * map.height; }
-    else { x = rand() * map.width; zz = -1 - rand() * 6; }
+    if (side === 0) { x = -1 - rand() * 6; zz = rand() * grid.height; }
+    else if (side === 1) { x = grid.width + 1 + rand() * 6; zz = rand() * grid.height; }
+    else if (side === 2) { x = rand() * grid.width; zz = -1 - rand() * 6; }
+    else { x = rand() * grid.width; zz = grid.height + 1 + rand() * 6; }
+    // Keep the roads' entrances clear.
+    if (sim.paths.some((p) => Math.hypot(p.points[0].x - x, p.points[0].z - zz) < 3)) continue;
     const model = rand() < 0.7 ? 'pineCrooked' : (rand() < 0.5 ? 'trunk' : 'gravestone');
     place(model, x, zz, rand() * Math.PI * 2, 0, 0.9 + rand() * 0.6);
   }
-  return { root, gate, lights, emitters };
+  return {
+    root, house, lights, emitters,
+    dispose() {
+      scene.remove(root);
+    },
+  };
 }
 
 /** Small deterministic PRNG so the decoration layout is the same every run. */
