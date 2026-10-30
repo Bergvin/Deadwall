@@ -105,7 +105,17 @@ export class TowerView {
     warn.position.y = orbY + 0.55;
     warn.visible = false;
     root.add(warn);
-    root.traverse((o) => { if (o.isMesh) o.userData.towerId = t.id; });
+    if (t.stats.aimed) {
+      const len = t.stats.range;
+      const aim = new THREE.Mesh(new THREE.PlaneGeometry(0.08, len), new THREE.MeshBasicMaterial({
+        color: this.types[t.type].color, transparent: true, opacity: 0.45, depthWrite: false,
+      }));
+      aim.geometry.rotateX(-Math.PI / 2);
+      aim.geometry.translate(0, 0.06, len / 2 + 0.5);
+      aim.userData.aimLine = true;
+      root.add(aim);
+    }
+    root.traverse((o) => { if (o.isMesh && !o.userData.aimLine) o.userData.towerId = t.id; });
     this.group.add(root);
     this.#nodes.set(t.id, { root, orb, halo, warn, orbY, pulse: 0, phase: Math.random() * 6 });
   }
@@ -140,6 +150,9 @@ export class TowerView {
       n.warn.material = empty ? this.warnMats.empty : this.warnMats.low;
       n.warn.rotation.y += dt * 3;
       n.warn.position.y = n.orbY + 0.55 + Math.sin(this.time * 4) * 0.06;
+      // Aimed towers turn their line to the aim.
+      const line = n.root.children.find((o) => o.userData.aimLine);
+      if (line && t) line.rotation.y = t.aim ?? 0;
       // A jammed tower's orb goes dark.
       n.orb.visible = !(t && this.towers.time < t.jammedUntil) || Math.sin(this.time * 20) > 0;
       this.#buildRing(n, t);

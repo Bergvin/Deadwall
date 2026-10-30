@@ -9,6 +9,7 @@ import './hud.css';
 import { PHASE } from '../core/waves.js';
 import { GAME_SPEEDS } from '../config/game.js';
 import { TOWER_KEYS, SPELL_KEYS, keyLabel } from '../input/interaction.js';
+import { DamageMeter } from './damageMeter.js';
 import { towerStats } from '../core/towers.js';
 
 const h = (tag, cls, html) => {
@@ -42,7 +43,7 @@ export class Hud {
     this.side.hidden = true;
     this.el.append(this.side);
     this.el.append(h('div', 'help',
-      '<kbd>1</kbd>-<kbd>6</kbd> build a tower &nbsp; <kbd>LMB</kbd> place / select<br>'
+      '<kbd>1</kbd>-<kbd>0</kbd> <kbd>-</kbd> build a tower &nbsp; <kbd>LMB</kbd> place / select<br>'
       + '<kbd>U</kbd> upgrade &nbsp; <kbd>R</kbd> send the runner &nbsp; <kbd>Del</kbd> sell<br>'
       + '<kbd>Q</kbd><kbd>E</kbd><kbd>F</kbd><kbd>G</kbd> spells &nbsp; double-click a tower: send the runner<br>'
       + '<kbd>RMB</kbd> cancel &nbsp; <kbd>RMB</kbd> drag / <kbd>WASD</kbd> pan &nbsp; <kbd>Wheel</kbd> zoom<br>'
@@ -56,6 +57,15 @@ export class Hud {
     this.alerts = h('div', 'ammoalerts');
     this.el.append(this.toasts, this.banner, this.vignette, this.bossBar, this.preview, this.alerts);
     this.picker = new PerkPicker(this);
+    this.meter = new DamageMeter(this.el, sim, { select: (sel) => this.actions.select(sel) });
+    // The first time a new kind of enemy turns up: what it is and what beats it.
+    this.seenTypes = new Set();
+    sim.events.on('zombieSpawned', (z) => {
+      if (this.seenTypes.has(z.type)) return;
+      this.seenTypes.add(z.type);
+      const t = this.cfg.ZOMBIES[z.type];
+      if (t.stealth || t.immune || t.immuneTags || t.regen) this.toast(`<b>${t.name}</b>: ${t.description}`, 'long');
+    });
 
     const ev = sim.events;
     const refresh = () => this.refresh();
@@ -234,6 +244,8 @@ export class Hud {
     this.currentMode = mode;
     if (mode.kind === 'tower') {
       this.modeEl.innerHTML = `Building <b>${this.cfg.TOWERS[mode.towerType].name}</b>: click free ground, right-click to stop`;
+    } else if (mode.kind === 'aim') {
+      this.modeEl.innerHTML = 'Aiming: <b>click where it should shoot</b>, right-click to cancel';
     } else {
       this.modeEl.innerHTML = '';
     }
@@ -286,6 +298,17 @@ export class Hud {
       + '<div class="row v-buffrow"><span>Boosted</span><b class="v-buff"></b></div>'
       + '<div class="row"><span>DPS last wave</span><b class="v-dps"></b></div>'
       + '<div class="row"><span>Kills</span><b class="v-kills"></b></div>';
+    // Who it can hurt: stealth, ghosts (no physical), ironclads (no sharp).
+    const Z = this.cfg.ZOMBIES;
+    const can = (zt) => !(Z[zt].immune?.includes(s.damageType)) && !(s.tags && Z[zt].immuneTags?.some((x) => s.tags.includes(x)));
+    const mark = (ok) => (ok ? '<b class="yes">✓</b>' : '<b class="no">✗</b>');
+    this.side.insertAdjacentHTML('beforeend',
+      `<div class="row hits"><span>Hits</span><span>${mark(s.detect)} stealth${s.reveal ? ' (reveals)' : ''} · ${mark(can('ghost'))} ghosts · ${mark(can('ironclad'))} ironclads</span></div>`);
+    if (s.aimed) {
+      const aim = h('button', 'btn', 'Aim: choose where it shoots');
+      aim.addEventListener('click', () => this.actions.aim(tower.id));
+      this.side.append(aim);
+    }
     const send = h('button', 'btn sendbtn', 'Send the runner with a crate <span class="k">R</span>');
     send.addEventListener('click', () => this.actions.order(tower.id));
     const tgt = h('select', 'targeting');
@@ -298,7 +321,9 @@ export class Hud {
     tgt.addEventListener('change', () => sim.towers.setTargeting(tower.id, tgt.value));
     const tRow = h('div', 'row', '<span>Target</span>');
     tRow.append(tgt);
-    this.side.append(send, tRow);
+    // Aimed towers shoot along their line: no target choice.
+    this.side.append(send);
+    if (!s.aimed) this.side.append(tRow);
     // Upgrade: a plain button, or the two specialisations side by side at the spec level.
     const upWrap = h('div', 'upwrap');
     this.side.append(upWrap);
@@ -510,7 +535,8 @@ export class Hud {
     let pv = '';
     if (prep) {
       const comp = w.preview();
-      const parts = comp.groups.map((g) => `${g.count} ${this.cfg.ZOMBIES[g.type].name}${g.count > 1 ? 's' : ''}`);
+      const trait = (z) => (z.stealth ? ' <b class="trait">stealth</b>' : z.immune ? ' <b class="trait">no physical</b>' : z.immuneTags ? ' <b class="trait">no sharp</b>' : z.regen ? ' <b class="trait">regrows</b>' : '');
+      const parts = comp.groups.map((g) => `${g.count} ${this.cfg.ZOMBIES[g.type].name}${g.count > 1 ? 's' : ''}${trait(this.cfg.ZOMBIES[g.type])}`);
       const v = w.variantInfo(comp.variant);
       const newRoads = sim.paths.filter((p) => p.from === w.nextWave && p.from > 1).length;
       pv = `<span class="label">Next wave</span> `
@@ -543,6 +569,8 @@ export class Hud {
     }
     this.#tickRunnerBar();
     this.picker.tick();
+    this.meter.tick(false, 1 / 60);
+    this.meter.setSelected(this.selection?.kind === 'tower' ? this.selection.id : 0);
     this.dyn?.();
   }
 
@@ -556,12 +584,13 @@ export class Hud {
   toast(text, kind = '') {
     const t = h('div', `toast ${kind}`, text);
     this.toasts.append(t);
-    setTimeout(() => t.remove(), 2600);
+    setTimeout(() => t.remove(), kind === 'long' ? 7000 : 2600);
     while (this.toasts.children.length > 4) this.toasts.firstChild.remove();
   }
 
   dispose() {
     this.picker.close();
+    this.meter.dispose();
     this.el.remove();
   }
 }

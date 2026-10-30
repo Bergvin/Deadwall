@@ -4,9 +4,15 @@
 // Spells and perks change towers through timed buffs (t.buffs) and the `extra` hook the
 // simulation provides (runner auras, plague clouds, perpetual motion).
 
+import { TERRAIN } from './grid.js';
+
+const ROAD = TERRAIN.ROAD;
 const MULT_KEYS = {
   damageMult: 'damage', intervalMult: 'interval', aoeMult: 'aoe', knockMult: 'knock',
 };
+
+/** Unit vector of an angle (0 = +z, like facing). */
+const dirOf = (a) => ({ dx: Math.sin(a), dz: Math.cos(a) });
 
 /** Pure: a tower's stats at a level and specialisation (`spec` = 'a' | 'b' | null). */
 export function towerStats(type, level, spec, rules) {
@@ -30,11 +36,21 @@ export function towerStats(type, level, spec, rules) {
     shred: null, napalm: null, bleed: null,
     balls: 1,
     critChance: rules.critChance ?? 0,
+    /** Traits: sees stealth; reveals stealth in range (Watchtower) and marks it; attack tags. */
+    detect: !!type.detect,
+    reveal: !!type.reveal,
+    markPct: 0,
+    tags: type.tags ?? null,
+    poison: type.poison ? { dps: type.poison.dps * rules.burnMult ** k * rules.damageMult ** (k / 2), duration: type.poison.duration } : null,
+    chain: type.chain ? { ...type.chain } : null,
+    aimed: !!type.aimed,
   };
   const mods = spec ? type.specs?.[spec]?.mods ?? {} : {};
   for (const [key, v] of Object.entries(mods)) {
     if (MULT_KEYS[key]) s[MULT_KEYS[key]] *= v;
     else if (key === 'burnMult' && s.burn) s.burn.dps *= v;
+    else if (key === 'poisonMult' && s.poison) s.poison.dps *= v;
+    else if (key === 'jumpsAdd' && s.chain) s.chain.jumps += v;
     else if (key === 'slowFactorMult' && s.slow) s.slow.factor *= v;
     else if (key === 'targetsAdd') s.targets += v;
     else if (key === 'rangeAdd') s.range += v;
@@ -132,6 +148,8 @@ export class TowerSystem {
       waveDamage: 0, lastWaveDamage: 0, lastWaveDps: 0, totalDamage: 0,
     };
     t.stats = towerStats(type, 1, null, this.rules);
+    // Aimed towers (Ballista) start pointing along the most road they can cover.
+    if (t.stats.aimed) t.aim = this.bestAim(t.cx, t.cz, t.stats.range);
     // A new tower comes with a full load.
     t.ammo = t.stats.maxAmmo;
     this.grid.towerId[this.grid.index(x, y)] = t.id;
@@ -303,10 +321,56 @@ export class TowerSystem {
     return t.stats.range + this.modsOf(t).rangeAdd;
   }
 
+  /** Can this tower aim at the zombie (stealth needs detection or a Watchtower's light)? */
+  sees(t, z) {
+    return t.stats.detect || this.zombies.isVisible(z);
+  }
+
+  /**
+   * Direction (angle) along which a line from (cx, cz) of this length covers the most road.
+   * Used to point an aimed tower when it is built; the player can turn it (setAim).
+   */
+  bestAim(cx, cz, length) {
+    let best = 0, bestN = -1;
+    for (let i = 0; i < 48; i++) {
+      const a = (i / 48) * Math.PI * 2;
+      const { dx, dz } = dirOf(a);
+      let n = 0;
+      for (let s = 0.5; s <= length; s += 0.5) {
+        const x = Math.floor(cx + dx * s), y = Math.floor(cz + dz * s);
+        if (this.grid.inBounds(x, y) && this.grid.terrainAt(x, y) === ROAD) n++;
+      }
+      if (n > bestN) { bestN = n; best = a; }
+    }
+    return best;
+  }
+
+  /** Points an aimed tower towards (x, z). */
+  setAim(id, x, z) {
+    const t = this.get(id);
+    if (!t?.stats.aimed) return false;
+    t.aim = Math.atan2(x - t.cx, z - t.cz);
+    this.events.emit('towerAimed', t);
+    return true;
+  }
+
+  /** Zombies an aimed tower's line would cross (in range, within the bolt's width). */
+  #onLine(t, range, width) {
+    const { dx, dz } = dirOf(t.aim);
+    const out = [];
+    for (const z of this.zombies.inRange(t.cx, t.cz, range)) {
+      const rx = z.x - t.cx, rz = z.z - t.cz;
+      const along = rx * dx + rz * dz;
+      if (along <= 0) continue;
+      if (Math.abs(rx * dz - rz * dx) <= width && this.sees(t, z)) out.push(z);
+    }
+    return out;
+  }
+
   #pick(t, range, exclude) {
     let best = null, bestScore = Infinity;
     for (const z of this.zombies.inRange(t.cx, t.cz, range)) {
-      if (exclude?.has(z)) continue;
+      if (exclude?.has(z) || !this.sees(t, z)) continue;
       let score;
       switch (t.targeting) {
         case 'last': score = -this.zombies.threatDistance(z); break;
@@ -343,10 +407,12 @@ export class TowerSystem {
       const m = this.modsOf(t);
       const s = t.stats;
       const range = s.range + m.rangeAdd;
-      const first = this.#pick(t, range);
+      // Watchtowers light up stealthy enemies in range (and mark them), firing or not.
+      if (s.reveal) for (const z of this.zombies.inRange(t.cx, t.cz, range)) if (z.stealth || s.markPct) this.zombies.reveal(z, 0.6, s.markPct);
+      const first = s.aimed ? this.#onLine(t, range, this.types[t.type].projectile.width)[0] : this.#pick(t, range);
       t.targetId = first ? first.id : 0;
       if (!first) continue;
-      t.facing = Math.atan2(first.x - t.cx, first.z - t.cz);
+      t.facing = s.aimed ? t.aim : Math.atan2(first.x - t.cx, first.z - t.cz);
       t.cooldown = (s.interval / (1 + m.attackSpeedPct / 100)) / m.gunk;
       if (!m.freeAmmo) {
         t.ammo = Math.max(0, t.ammo - 1);
@@ -368,8 +434,43 @@ export class TowerSystem {
       bossMult: s.bossMult, freezeChance: s.freezeChance, freezeTime: s.freezeTime,
       shred: s.shred, napalm: s.napalm, bleed: s.bleed,
       critChance: s.critChance + m.critAdd / 100,
+      poison: s.poison, tags: s.tags,
       fx: s.aoe ? `${t.type}-small` : undefined,
     };
+    // Ballista: a bolt straight along its aim that goes through everything on the line.
+    if (s.aimed) {
+      const { dx, dz } = dirOf(t.aim);
+      const P = type.projectile;
+      this.projectiles.fire({
+        ownerId: t.id, kind: P.kind,
+        from: { x: t.cx + dx * 0.5, y: 1.3, z: t.cz + dz * 0.5 },
+        speed: P.speed,
+        line: { dx, dz, length: range, width: P.width, maxHits: s.pierce ?? 999 },
+        payload: { ...payload, radius: 0 },
+      });
+      this.events.emit('towerAttack', { tower: t, targets: [first] });
+      return;
+    }
+    // Tesla: lightning jumps from the target to the nearest enemies it can see, weaker each jump.
+    if (s.chain) {
+      const hit = [first];
+      let from = first;
+      for (let j = 0; j < s.chain.jumps; j++) {
+        let next = null, nd = Infinity;
+        for (const z of this.zombies.inRange(from.x, from.z, s.chain.range)) {
+          if (hit.includes(z) || !this.sees(t, z)) continue;
+          const d = Math.hypot(z.x - from.x, z.z - from.z);
+          if (d < nd) { nd = d; next = z; }
+        }
+        if (!next) break;
+        hit.push(next);
+        from = next;
+      }
+      hit.forEach((z, j) => this.combat.applyPayload(t.id, { ...payload, damage: payload.damage * s.chain.falloff ** j, stun: j ? 0 : payload.stun }, z, z.x, z.z));
+      this.events.emit('teslaArc', { from: { x: t.cx, z: t.cz }, to: hit.map((z) => ({ x: z.x, z: z.z })) });
+      this.events.emit('towerAttack', { tower: t, targets: hit });
+      return;
+    }
     if (type.projectile.kind === 'roller') {
       // Rolling stones: dropped at the tower's foot, they roll straight on past the target.
       const dx = first.x - t.cx, dz = first.z - t.cz, d = Math.hypot(dx, dz) || 1;

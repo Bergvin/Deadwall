@@ -7,6 +7,7 @@ export const FX_COLORS = {
   bash: 0xf0e6d0, rally: 0xffc23d, holy: 0xffe08a, bolt: 0xc8b8a0, hit: 0xc8b8a0, level: 0xffd23d,
   plague: 0x5aa020, earth: 0xa07848, wind: 0xd8fff0, water: 0x4aa8ff,
   banana: 0xffe040, gale: 0xd8fff0, boulder: 0xa07848, arrow: 0xd8c8a0, roller: 0xb8a888, spell: 0x7cff9a,
+  alchemist: 0x7cff5a, tesla: 0x9fe8ff, watchtower: 0xffe38a, ballista: 0xc8a070,
 };
 
 export class Fx {

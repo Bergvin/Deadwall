@@ -18,9 +18,9 @@ export const REJECT_TEXT = {
 };
 
 /** Hotkeys for tower types (in TOWERS order) and spells (in the order he learned them). */
-export const TOWER_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'];
+export const TOWER_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus'];
 export const SPELL_KEYS = ['KeyQ', 'KeyE', 'KeyF', 'KeyG', 'KeyT', 'KeyY', 'KeyH'];
-export const keyLabel = (code) => code.replace('Digit', '').replace('Key', '');
+export const keyLabel = (code) => code.replace('Digit', '').replace('Key', '').replace('Minus', '-');
 
 export class Interaction {
   /** @param {{canvas, cam, sim, towerView, runnerView, overlay, hud, cameraCfg, signal, settings}} deps */
@@ -67,7 +67,18 @@ export class Interaction {
     this.#setMode({ kind: 'tower', towerType });
   }
 
+  /** Aims a tower that shoots along a line (Ballista): it follows the mouse until a click. */
+  enterAim(towerId) {
+    const t = this.towers.get(towerId);
+    if (!t?.stats.aimed) return;
+    this.#setMode({ kind: 'aim', id: towerId, before: t.aim });
+  }
+
   cancel() {
+    if (this.mode.kind === 'aim') {
+      const t = this.towers.get(this.mode.id);
+      if (t) t.aim = this.mode.before;
+    }
     if (this.mode.kind !== 'select') this.#setMode({ kind: 'select' });
     else this.select(null);
   }
@@ -150,6 +161,12 @@ export class Interaction {
     }
     if (e.button !== 0) return;
     if (this.mode.kind === 'tower') { this.#buildAt(e.clientX, e.clientY); return; }
+    if (this.mode.kind === 'aim') {
+      const p = this.cam.groundPoint(e.clientX, e.clientY);
+      if (p) this.towers.setAim(this.mode.id, p.x, p.z);
+      this.#setMode({ kind: 'select' });
+      return;
+    }
     const u = this.runnerAt(e.clientX, e.clientY);
     if (u) { this.select({ kind: 'runner', id: u.id }); return; }
     const t = this.towerAt(e.clientX, e.clientY);
@@ -181,6 +198,12 @@ export class Interaction {
     }
     const cell = this.cellAt(e.clientX, e.clientY);
     this.lastPointer = { x: e.clientX, y: e.clientY };
+    // Aiming: the tower's line follows the mouse.
+    if (this.mode.kind === 'aim') {
+      const p = this.cam.groundPoint(e.clientX, e.clientY);
+      const t = this.towers.get(this.mode.id);
+      if (p && t) t.aim = Math.atan2(p.x - t.cx, p.z - t.cz);
+    }
     if (cell?.x !== this.hoverCell?.x || cell?.y !== this.hoverCell?.y) {
       this.hoverCell = cell;
       this.#refreshHover();

@@ -103,6 +103,9 @@ export class ZombieSystem {
       /** Tower Smashers: the tower being smashed, hits on it, towers already smashed. */
       smashTarget: 0, smashHits: 0, smashed: null,
       enraged: false,
+      /** Traits (see config/enemies.js): stealth until revealed, regeneration timer. */
+      stealth: !!t.stealth, revealedUntil: 0, markedUntil: 0, markPct: 0,
+      lastHurt: 0,
     };
     this.#place(zb);
     this.list.push(zb);
@@ -123,14 +126,18 @@ export class ZombieSystem {
    * shred), magic and fire by resist; poison and true damage ignore both. Death happens once.
    * @returns {number} damage dealt
    */
-  damage(z, amount, sourceId = 0, { type = 'physical', armorPen = 0, crit = false, dot = false } = {}) {
+  damage(z, amount, sourceId = 0, { type = 'physical', armorPen = 0, crit = false, dot = false, tags = null } = {}) {
     if (!z.alive || !(amount > 0)) return 0;
+    if (this.isImmune(z, type, tags)) return 0;
     let mult = 1;
+    // Hunter's Mark (Watchtower): marked enemies take more from everything.
+    if (this.time < z.markedUntil) mult *= 1 + z.markPct / 100;
     const armor = this.time < z.shredUntil ? z.armor * (1 - z.shred) : z.armor;
     if (type === 'physical') mult = 1 - Math.max(0, armor - armorPen);
     else if (type === 'magic' || type === 'fire') mult = 1 - z.resist;
     const dealt = Math.min(z.hp, Math.max(1, amount * mult));
     z.hp -= dealt;
+    z.lastHurt = this.time;
     this.events.emit('zombieDamaged', { zombie: z, amount: dealt, crit, dot, type, sourceId });
     if (z.hp <= 0) this.#kill(z, sourceId);
     return dealt;
@@ -263,6 +270,11 @@ export class ZombieSystem {
         continue;
       }
       if (z.dots.length) this.#stepDots(z, dt);
+      // Rotters grow back when left alone (poison stops it).
+      const regen = this.types[z.type].regen;
+      if (regen && z.alive && z.hp < z.maxHp && this.time - z.lastHurt >= regen.delay && this.time >= z.poisonUntil) {
+        z.hp = Math.min(z.maxHp, z.hp + z.maxHp * regen.pct * dt);
+      }
       if (z.shoveStacks) z.shoveStacks = Math.max(0, z.shoveStacks - dt * this.physics.shoveRecovery);
       if (z.alive) {
         if (this.isTumbling(z)) this.#stepPhysics(z, dt);
@@ -363,6 +375,24 @@ export class ZombieSystem {
   }
 
   /** Alive zombies within `range` of (x, z). */
+  /** True when hits of this damage type (or with one of these tags) do nothing to it. */
+  isImmune(z, type, tags) {
+    const t = this.types[z.type];
+    if (t.immune?.includes(type)) return true;
+    return !!(tags && t.immuneTags?.some((x) => tags.includes(x)));
+  }
+
+  /** True when a tower without detection can see it (not stealthy, or revealed right now). */
+  isVisible(z) {
+    return !z.stealth || this.time < z.revealedUntil;
+  }
+
+  /** A Watchtower lights it up for `seconds` (and may mark it to take more damage). */
+  reveal(z, seconds, markPct = 0) {
+    z.revealedUntil = Math.max(z.revealedUntil, this.time + seconds);
+    if (markPct) { z.markedUntil = this.time + seconds; z.markPct = Math.max(z.markPct, markPct); }
+  }
+
   *inRange(x, z, range) {
     const r2 = range * range;
     for (const zb of this.list) {

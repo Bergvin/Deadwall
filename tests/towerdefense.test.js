@@ -377,3 +377,70 @@ test('build perks: Handyman builds faster, Prefab Parts can finish at once, Full
   assert.equal(t.level, 10);
   assert.ok(instant >= 1, `some upgrades were instant (${instant})`);
 });
+
+test('traits: ghosts ignore physical, ironclads ignore sharp, rotters regrow unless poisoned', () => {
+  const sim = fresh();
+  const zs = sim.zombies;
+  const ghost = zs.spawn('ghost', 0, 1, { s: 5 });
+  assert.equal(zs.damage(ghost, 50, 0, { type: 'physical' }), 0, 'physical passes through a ghost');
+  assert.ok(zs.damage(ghost, 10, 0, { type: 'magic' }) > 0);
+  const iron = zs.spawn('ironclad', 0, 1, { s: 5 });
+  assert.equal(zs.damage(iron, 50, 0, { type: 'physical', tags: ['sharp'] }), 0, 'arrows bounce off');
+  assert.ok(zs.damage(iron, 50, 0, { type: 'physical' }) > 0, 'a boulder does not');
+  const rot = zs.spawn('rotter', 0, 1, { s: 5 });
+  zs.damage(rot, rot.maxHp / 2, 0, { type: 'magic' });
+  const low = rot.hp;
+  for (let i = 0; i < 180; i++) zs.step(1 / 60);
+  assert.ok(rot.hp > low + 1, 'it grows back');
+  zs.addDot(rot, { dps: 0.001, duration: 30, type: 'poison' });
+  const poisoned = rot.hp;
+  for (let i = 0; i < 180; i++) zs.step(1 / 60);
+  assert.ok(rot.hp <= poisoned, 'poison stops the regrowth');
+});
+
+test('stealth: towers cannot aim at a wraith until a watchtower lights it up', () => {
+  const sim = fresh();
+  const c = besideRoad(sim, 8);
+  const t = sim.towers.build('arrow', c.x, c.y);
+  t.ammo = t.stats.maxAmmo;
+  const p = pointAt(sim.paths[0], 8);
+  const w = sim.zombies.spawn('wraith', 0, 1, { s: 8 });
+  w.speed = 0;
+  for (let i = 0; i < 120; i++) sim.step(1 / 60);
+  assert.equal(w.hp, w.maxHp, 'unseen: not a scratch');
+  // A watchtower within range reveals it.
+  let wc = null;
+  for (let d = 2; d < 6 && !wc; d++) {
+    for (const [dx, dy] of [[d, 0], [-d, 0], [0, d], [0, -d], [d, d], [-d, -d], [d, -d], [-d, d]]) {
+      const x = Math.floor(p.x) + dx, y = Math.floor(p.z) + dy;
+      if (sim.towers.canBuild('watchtower', x, y).ok) { wc = { x, y }; break; }
+    }
+  }
+  assert.ok(sim.towers.build('watchtower', wc.x, wc.y));
+  for (let i = 0; i < 240 && w.alive; i++) sim.step(1 / 60);
+  assert.ok(w.hp < w.maxHp, 'revealed: the arrow tower hits it');
+});
+
+test('tesla lightning jumps; the ballista shoots along its aim through a whole line', () => {
+  const sim = fresh();
+  const c = besideRoad(sim, 8);
+  const tesla = sim.towers.build('tesla', c.x, c.y);
+  const pack = [0, 0.6, 1.2, 1.8].map((d) => sim.zombies.spawn('walker', 0, 3, { s: 8 + d, lane: 0 }));
+  for (const z of pack) z.speed = 0;
+  let arcs = null;
+  sim.events.on('teslaArc', (e) => { arcs ??= e; });
+  for (let i = 0; i < 120 && !arcs; i++) sim.step(1 / 60);
+  assert.ok(arcs && arcs.to.length >= 3, 'it chained to several');
+  assert.ok(pack.filter((z) => z.hp < z.maxHp).length >= 3);
+  sim.towers.sell(tesla.id);
+  const b = sim.towers.build('ballista', c.x, c.y);
+  assert.ok(Number.isFinite(b.aim), 'aimed at the road when built');
+  // Point it away from the road: it does not shoot; back at the pack: it does.
+  sim.towers.setAim(b.id, b.cx - (pack[0].x - b.cx), b.cz - (pack[0].z - b.cz));
+  const ammo = b.ammo;
+  for (let i = 0; i < 120; i++) sim.step(1 / 60);
+  assert.equal(b.ammo, ammo, 'nothing on its line');
+  sim.towers.setAim(b.id, pack[0].x, pack[0].z);
+  for (let i = 0; i < 240; i++) sim.step(1 / 60);
+  assert.ok(b.ammo < ammo, 'fires along the new aim');
+});

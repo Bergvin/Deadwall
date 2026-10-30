@@ -16,6 +16,7 @@
 import { PHASE } from '../src/core/waves.js';
 import { coverage } from '../src/core/paths.js';
 import { towerStats } from '../src/core/towers.js';
+import { TERRAIN } from '../src/core/grid.js';
 
 const BASIC_MIX = ['arrow', 'frost', 'fire', 'boulder', 'gale', 'roller', 'arrow', 'fire', 'frost', 'boulder'];
 
@@ -49,6 +50,10 @@ const SMART = {
   /** Roads opening within the horizon count this share; covered road length that halves a road's weight. */
   futureRoad: 0.8,
   spread: 30,
+  /** Enemies a line attack (rolling stone, ballista bolt) hits on average. */
+  lineHits: 2.5,
+  /** How much revealing stealth is worth (share of the defence per share of stealth HP). */
+  revealWeight: 1.5,
   /** Tower types it may build (null = all); for testing one type at a time. */
   allowTypes: null,
   /** Orders: send the runner to towers below this ammo share during a wave. */
@@ -159,23 +164,36 @@ function threat(sim, horizon) {
 }
 
 /** Effective damage per second of a tower's stats against the coming mix (before range). */
-function effDps(s, mix, sim, p, type) {
+/**
+ * Effective damage per second of a tower's stats against the coming mix (before range).
+ * Enemies it cannot hurt (immune) or cannot see (stealth without detection or a Watchtower)
+ * count as nothing; Rotters count less unless the tower poisons.
+ * @param {{reveal: boolean}} ctx whether a Watchtower is already lighting up stealth
+ */
+function effDps(s, mix, sim, p, type, ctx = { reveal: false }) {
   const Z = sim.config.ZOMBIES;
   let mitig = 0;
-  for (const [type, hp] of Object.entries(mix.types)) {
-    const z = Z[type];
+  for (const [zt, hp] of Object.entries(mix.types)) {
+    const z = Z[zt];
+    if (z.immune?.includes(s.damageType) || (s.tags && z.immuneTags?.some((x) => s.tags.includes(x)))) continue;
+    if (z.stealth && !s.detect && !ctx.reveal && !s.aoe) continue;
     let m;
     if (s.damageType === 'physical') m = 1 - Math.max(0, z.armor - s.armorPen);
     else if (s.damageType === 'magic' || s.damageType === 'fire') m = 1 - z.resist;
     else m = 1;
     if (s.bossMult && z.boss) m *= 1 + s.bossMult;
+    if (z.regen && !s.poison) m *= 0.7;
     mitig += m * hp;
   }
   mitig /= Math.max(1, mix.total);
-  // Several victims per shot: extra targets, area, rolling balls; never more than the pack.
-  // A rolling stone crushes everything along its line.
-  const hits = type === 'roller' ? Math.min(4, 2.5 * s.balls) : Math.min(4, s.targets + (s.aoe ? s.aoe * p.aoeWeight * 2 : 0));
+  // Several victims per shot: extra targets, area, lines (rolling stone, ballista), lightning
+  // jumps; never more than the pack.
+  const line = type === 'roller' || s.aimed;
+  const hits = line ? Math.min(4, p.lineHits * (s.balls ?? 1))
+    : s.chain ? Math.min(4, 1 + s.chain.jumps * s.chain.falloff * 0.6)
+      : Math.min(4, s.targets + (s.aoe ? s.aoe * p.aoeWeight * 2 : 0));
   let dps = (s.damage / s.interval) * hits * mitig;
+  if (s.poison) dps += s.poison.dps * Math.min(3, 1 + (s.aoe ?? 0) * 1.5) * mitig;
   if (s.burn) dps += s.burn.dps * Math.min(3, 1 + (s.aoe ?? 0) * 1.5) * (1 - (mix.types.plague ?? 0) / Math.max(1, mix.total) * 0.6);
   if (s.napalm) dps += s.napalm.dps * 1.5;
   if (s.bleed) dps += s.damage * s.bleed.dps * 2;
@@ -247,15 +265,45 @@ export function createBot(name, overrides = null) {
   /** Total damage the defence puts out (for valuing support). */
   function teamDps(sim, mix) {
     let d = 0;
-    for (const t of sim.towers.all()) d += effDps(t.stats, mix, sim, profile, t.type) * cover(sim, t.cx, t.cz, t.stats.range);
+    for (const t of sim.towers.all()) d += effDps(t.stats, mix, sim, profile, t.type, ctx) * coverOf(sim, t.stats, t.cx, t.cz);
     return d;
   }
 
+  /** Road an aimed tower covers: the best straight line from it (cached per cell). */
+  function lineCover(sim, cx, cz, length) {
+    const key = `line${cx},${cz},${length.toFixed(1)}`;
+    let v = covCache.get(key);
+    if (v === undefined) {
+      v = 0;
+      for (let i = 0; i < 48; i++) {
+        const a = (i / 48) * Math.PI * 2;
+        let n = 0;
+        for (let s = 0.5; s <= length; s += 0.5) {
+          const x = Math.floor(cx + Math.sin(a) * s), y = Math.floor(cz + Math.cos(a) * s);
+          if (sim.grid.inBounds(x, y) && sim.grid.terrainAt(x, y) === TERRAIN.ROAD) n++;
+        }
+        v = Math.max(v, n * 0.5);
+      }
+      covCache.set(key, v);
+    }
+    return v;
+  }
+
+  function coverOf(sim, s, cx, cz) {
+    return s.aimed ? lineCover(sim, cx, cz, s.range) : cover(sim, cx, cz, s.range);
+  }
+
+  /** Shared per decision: is a Watchtower already lighting up stealth? */
+  const ctx = { reveal: false, stealthShare: 0 };
+
   /** Value of a tower with these stats at (cx, cz): effective damage over the road in range. */
   function value(sim, type, s, cx, cz, mix, team, sameType) {
-    const c = cover(sim, cx, cz, s.range);
-    const own = effDps(s, mix, sim, profile, type) * c;
-    const support = supportShare(s, profile) * Math.min(team, own * 6 + 50) * Math.min(1, c / 4);
+    const c = coverOf(sim, s, cx, cz);
+    const own = effDps(s, mix, sim, profile, type, ctx) * c;
+    let support = supportShare(s, profile) * Math.min(team, own * 6 + 50) * Math.min(1, c / 4);
+    // The first tower that reveals stealth unlocks the whole defence against it.
+    if (s.reveal && !ctx.reveal) support += ctx.stealthShare * profile.revealWeight * Math.max(team, 50) * Math.min(1, c / 4);
+    if (s.markPct) support += (s.markPct / 100) * 0.5 * Math.min(team, own * 6 + 50) * Math.min(1, c / 4);
     return own * profile.sameTypeDecay ** sameType + support * profile.supportDecay ** sameType;
   }
 
@@ -275,7 +323,10 @@ export function createBot(name, overrides = null) {
     const mix = threat(sim, profile.horizon);
     // House first: repair below the threshold (between waves only).
     if (sim.house.hp < sim.house.maxHp * profile.repairAt) sim.house.repair();
+    const Z = sim.config.ZOMBIES;
+    ctx.stealthShare = Object.entries(mix.types).reduce((a, [zt, hp]) => a + (Z[zt].stealth ? hp : 0), 0) / Math.max(1, mix.total);
     for (let guard = 0; guard < 40; guard++) {
+      ctx.reveal = [...towers.all()].some((t) => t.stats.reveal);
       weights = roadWeights(sim);
       const team = teamDps(sim, mix);
       const same = {};

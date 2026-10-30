@@ -48,6 +48,7 @@ export class Session {
       select: (sel) => this.input.select(sel),
       order: (id) => sim.runner.orderRefill(id),
       cast: (n) => this.input.castSlot(n),
+      aim: (id) => this.input.enterAim(id),
       toggleAutoCast: (id) => {
         const on = !sim.runner.isAutoCast(id);
         sim.runner.setAutoCast(id, on);
@@ -112,10 +113,30 @@ export class Session {
     ev.on('commanderAbility', ({ icon, name, x, z, extra }) => {
       floaters.spawn({ x, y: 2.2, z }, `${icon} ${name}${extra ? ` ${extra}` : ''}`, 'cmdab');
     });
-    ev.on('zombieDamaged', ({ zombie, amount, crit, dot }) => {
-      if (dot) return; // damage over time is shown by the zombie's tint, not numbers
-      floaters.spawn({ x: zombie.x, y: 1.1, z: zombie.z }, crit ? `${Math.round(amount)}!` : `${Math.round(amount)}`, crit ? 'crit' : 'dmg');
+    // No damage numbers over the dead (the damage meter on the left shows who does what).
+    ev.on('zombieDamaged', ({ zombie, crit, dot }) => {
+      if (dot) return;
       effects.burst({ x: zombie.x, y: 0.6, z: zombie.z }, { count: crit ? 6 : 3, color: 0x6a1a14, size: 0.06, speed: 1, up: 1.5, life: 0.5, spread: 0.2 });
+    });
+    // Hits that do nothing (Ghosts vs physical, Ironclads vs arrows): a short note now and then.
+    const immuneShown = new Map();
+    ev.on('zombieImmune', ({ zombie }) => {
+      const now = this.sim.time;
+      if ((immuneShown.get(zombie.id) ?? -9) > now - 2.5) return;
+      immuneShown.set(zombie.id, now);
+      floaters.spawn({ x: zombie.x, y: 1.3, z: zombie.z }, 'immune', 'wall');
+    });
+    // Tesla lightning: sparks along each jump.
+    ev.on('teslaArc', ({ from, to }) => {
+      let a = { x: from.x, z: from.z, y: 1.8 };
+      for (const b of to) {
+        for (let k = 1; k <= 3; k++) {
+          const f = k / 4;
+          effects.burst({ x: a.x + (b.x - a.x) * f, y: a.y + (0.8 - a.y) * f, z: a.z + (b.z - a.z) * f }, { count: 2, color: FX_COLORS.tesla, size: 0.05, speed: 0.4, up: 0.3, life: 0.25, spread: 0.05 });
+        }
+        fx.ring(b.x, b.z, 0.35, FX_COLORS.tesla, 0.25);
+        a = { x: b.x, z: b.z, y: 0.8 };
+      }
     });
     ev.on('zombieKilled', ({ zombie }) => {
       floaters.spawn({ x: zombie.x, y: 1.4, z: zombie.z }, `+${zombie.reward}`, 'gold');
@@ -226,6 +247,7 @@ export class Session {
     // Bars: damaged zombies; tower ammo (blue, red when low).
     bars.begin(cam.camera);
     for (const z of sim.zombies.list) {
+      if (z.stealth && !sim.zombies.isVisible(z)) continue;
       if (z.alive && z.hp < z.maxHp) bars.add(z.x, 1.15 * z.scale + (z.air ?? 0), z.z, z.hp / z.maxHp, healthColor(z.hp / z.maxHp), z.boss ? 1.2 : 0.6);
     }
     const low = sim.config.TOWER_RULES.lowAmmo;

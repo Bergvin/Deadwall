@@ -8,6 +8,18 @@
 //   specs       two exclusive specialisations chosen at TOWER_RULES.specLevel; `mods` are
 //               applied on top of the level stats (Mult keys multiply, Add keys add, other
 //               keys are set)
+//   detect      can aim at stealthy enemies (Wraiths)
+//   reveal      lights up stealthy enemies in range for every tower (Watchtower)
+//   tags        attack tags: 'sharp' bounces off Ironclads
+//   poison      damage over time that ignores armor and resist and stops regeneration
+//   chain       lightning: {jumps, range, falloff} to the nearest enemies after the target
+//   aimed       shoots along a direction the player sets (the line it covers), not at targets
+//
+// Who beats what (see the enemies' traits in enemies.js):
+//   Wraith (stealth)  needs detect or a Watchtower nearby
+//   Ghost (no physical) Fire, Frost, Arcane, Alchemist, Tesla, Watchtower
+//   Ironclad (no sharp) everything but Arrow and Gale
+//   Rotter (regrows)  Alchemist poison stops the regrowth; burst damage helps
 
 export const TOWERS = {
   arrow: {
@@ -17,9 +29,10 @@ export const TOWERS = {
     cost: 100, ammo: 40,
     damage: 13, damageType: 'physical', interval: 0.7, range: 5.5,
     projectile: { kind: 'arrow', speed: 18 },
+    tags: ['sharp'],
     specs: {
       a: { name: 'Volley', text: 'Shoots 3 targets at once.', mods: { targetsAdd: 2 } },
-      b: { name: 'Sniper', text: '+3 range, double damage, triple against elites and bosses; slower.', mods: { rangeAdd: 3, damageMult: 2, bossMult: 1.5, intervalMult: 1.35 } },
+      b: { name: 'Sniper', text: '+3 range, double damage, triple against elites and bosses; slower. Sees stealth.', mods: { rangeAdd: 3, damageMult: 2, bossMult: 1.5, intervalMult: 1.35, detect: true } },
     },
   },
   fire: {
@@ -67,6 +80,7 @@ export const TOWERS = {
     cost: 130, ammo: 25,
     damage: 6, damageType: 'physical', interval: 1.1, range: 4.5, targets: 2, knock: 3,
     projectile: { kind: 'gust', speed: 20 },
+    tags: ['sharp'],
     specs: {
       a: { name: 'Hurricane', text: 'Throws them into the air: they land hard, further back.', mods: { knockMult: 1.3, lift: 7, aoe: 0.9 } },
       b: { name: 'Tailwind', text: 'Hits 3 more targets, pushes twice as far.', mods: { targetsAdd: 3, knockMult: 2 } },
@@ -82,6 +96,70 @@ export const TOWERS = {
     specs: {
       a: { name: 'Twin Stones', text: 'Rolls two balls side by side.', mods: { balls: 2 } },
       b: { name: 'Spiked Ball', text: 'Spikes make every victim bleed and pierce armor.', mods: { bleed: { dps: 0.35, duration: 4 }, armorPen: 0.6 } },
+    },
+  },
+  watchtower: {
+    name: 'Watchtower', icon: '◉', color: 0xffe38a,
+    description: 'A lantern on a tall post. Lights up invisible Wraiths in range so every tower can shoot them.',
+    strengths: 'Wraiths (reveals them), Ghosts', weaknesses: 'Very little damage of its own',
+    cost: 110, ammo: 40,
+    damage: 6, damageType: 'magic', interval: 1, range: 5.5,
+    projectile: { kind: 'lightbolt', speed: 16 },
+    detect: true, reveal: true,
+    specs: {
+      a: { name: 'Beacon', text: '+2.5 range: lights up a much bigger area.', mods: { rangeAdd: 2.5 } },
+      b: { name: "Hunter's Mark", text: 'Enemies in its light take 25% more damage from every tower.', mods: { markPct: 25 } },
+    },
+  },
+  arcane: {
+    name: 'Arcane Tower', icon: '✦', color: 0xb07aff,
+    description: 'Magic bolts that ignore armor and go right through ghosts and iron.',
+    strengths: 'Ghosts, Ironclads, Brutes', weaknesses: 'Plague carriers resist magic; pricey',
+    cost: 150, ammo: 30,
+    damage: 17, damageType: 'magic', interval: 1, range: 5,
+    projectile: { kind: 'arcane', speed: 14 },
+    specs: {
+      a: { name: 'Arcane Missiles', text: 'Shoots 3 targets at once.', mods: { targetsAdd: 2 } },
+      b: { name: 'Seer', text: 'Sees stealth, +1.5 range, +20% damage.', mods: { detect: true, rangeAdd: 1.5, damageMult: 1.2 } },
+    },
+  },
+  alchemist: {
+    name: 'Alchemist', icon: '⚗', color: 0x7cff5a,
+    description: 'Flasks of poison that splash and eat through armor and resist. Stops Rotters regrowing.',
+    strengths: 'Brutes, Rotters, Ghosts, bosses', weaknesses: 'Slow to kill: fast runners get through',
+    cost: 130, ammo: 20,
+    damage: 4, damageType: 'poison', interval: 1.5, range: 4.5, aoe: 1,
+    poison: { dps: 9, duration: 4 },
+    projectile: { kind: 'flask', speed: 9, arc: 1.2 },
+    specs: {
+      a: { name: 'Corrosive', text: 'Strips half their armor for 5s.', mods: { shred: { amount: 0.5, duration: 5 } } },
+      b: { name: 'Plague Cask', text: 'Bigger splash, poison 60% stronger.', mods: { aoeMult: 1.8, poisonMult: 1.6 } },
+    },
+  },
+  tesla: {
+    name: 'Tesla Coil', icon: 'ϟ', color: 0x9fe8ff,
+    description: 'Lightning that jumps from enemy to enemy.',
+    strengths: 'Packs, swarms, Ghosts, Ironclads', weaknesses: 'Bosses and lone enemies; plague resists',
+    cost: 160, ammo: 25,
+    damage: 13, damageType: 'magic', interval: 1.3, range: 4.5,
+    chain: { jumps: 3, range: 2, falloff: 0.8 },
+    projectile: { kind: 'spark', speed: 0 },
+    specs: {
+      a: { name: 'Storm Coil', text: 'Jumps to 3 more enemies.', mods: { jumpsAdd: 3 } },
+      b: { name: 'Overload', text: '80% more damage and a short stun on the first target.', mods: { damageMult: 1.8, stunAdd: 0.3 } },
+    },
+  },
+  ballista: {
+    name: 'Ballista', icon: '➹', color: 0xc8a070,
+    description: 'Shoots huge bolts in the direction you aim it; each bolt goes through everything on its line.',
+    strengths: 'Long straight roads, Ironclads, big groups in a line', weaknesses: 'Ghosts; only covers its line',
+    cost: 150, ammo: 16,
+    damage: 38, damageType: 'physical', armorPen: 0.3, interval: 2, range: 9,
+    projectile: { kind: 'ballista', speed: 22, width: 0.55 },
+    aimed: true,
+    specs: {
+      a: { name: 'Repeater', text: 'Shoots twice as often.', mods: { intervalMult: 0.5 } },
+      b: { name: 'Siege Bolt', text: 'Double damage, shoves them back down the road.', mods: { damageMult: 2, knock: 1.6 } },
     },
   },
 };

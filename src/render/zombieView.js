@@ -16,6 +16,8 @@ const STATUS = {
   empowered: new THREE.Color(1.35, 0.7, 1.2),
 };
 const ELITE_TINT = new THREE.Color(1.45, 0.75, 0.6);
+/** Unrevealed stealth: nearly black, with a faint shimmer. */
+const STEALTH_TINT = new THREE.Color(0.18, 0.14, 0.26);
 
 export class ZombieView {
   /**
@@ -41,6 +43,7 @@ export class ZombieView {
 
   #tint(z, time) {
     const c = this._c.copy(this.typeTint[z.type]);
+    if (z.stealth && time >= z.revealedUntil) return c.copy(STEALTH_TINT).multiplyScalar(0.8 + 0.4 * Math.sin(time * 6 + z.id));
     if (z.elite) c.multiply(ELITE_TINT);
     if (time < z.stunUntil) c.multiply(STATUS.stun);
     else if (z.dots.length) c.multiply(z.dots.some((d) => d.type === 'fire') ? STATUS.fire : STATUS.poison);

@@ -17,12 +17,15 @@ const STYLES = {
   waterbolt: { geom: () => new THREE.SphereGeometry(0.1, 10, 8), color: 0x4aa8ff },
   roller: { geom: () => new THREE.DodecahedronGeometry(0.32, 1), color: 0x9a8a70 },
   shard: { geom: () => cyl(0.02, 0.28), color: 0xd8f0ff },
+  lightbolt: { geom: () => new THREE.SphereGeometry(0.07, 8, 6), color: 0xffe38a },
+  arcane: { geom: () => new THREE.OctahedronGeometry(0.11, 0), color: 0xc08aff },
+  ballista: { geom: () => cyl(0.05, 1.1), color: 0x6a5038 },
 };
 const KIND_STYLE = {
   arrow: 'shaft', piercing: 'pierce', bolt: 'bolt', apbolt: 'apbolt',
   orb: 'orb', fireball: 'fireball', flask: 'flask', bomb: 'bomb',
   firebolt: 'firebolt', boulder: 'boulder', gust: 'gust', waterbolt: 'waterbolt',
-  roller: 'roller', shard: 'shard',
+  roller: 'roller', shard: 'shard', lightbolt: 'lightbolt', arcane: 'arcane', ballista: 'ballista',
 };
 
 function cyl(r, len) {

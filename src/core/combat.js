@@ -5,7 +5,9 @@
 //   bossMult (vs elites and bosses), burn {dps, duration}, bleed {dps (fraction of the
 //   hit), duration}, slow {factor, duration}, freezeChance + freezeTime, stun (+ stunAll), knock
 //   (shove back down the road), lift (throw up), shred {amount, duration},
-//   napalm {radius, duration, dps}, fx (impact effect name)
+//   napalm {radius, duration, dps}, poison {dps, duration} (ignores armor and resist, stops
+//   regeneration), tags (e.g. ['sharp']: Ironclads are immune), fx (impact effect name).
+// Immune victims (Ghosts vs physical, Ironclads vs sharp) take nothing and no effects.
 export class CombatSystem {
   /** @param {{zombies, zones, events, rng}} deps */
   constructor({ zombies, zones, events, rng }) {
@@ -33,12 +35,17 @@ export class CombatSystem {
 
   #hit(sourceId, pl, v, direct) {
     const zs = this.zombies;
+    if (zs.isImmune(v, pl.type, pl.tags)) {
+      if (direct) this.events.emit('zombieImmune', { zombie: v, sourceId });
+      return;
+    }
     let dmg = pl.damage ?? 0;
     const crit = pl.critChance > 0 && this.rng.next() < pl.critChance;
     if (crit) dmg *= pl.critMult ?? 2;
     if (pl.bossMult && (v.boss || v.elite)) dmg *= pl.bossMult;
-    if (dmg > 0) zs.damage(v, dmg, sourceId, { type: pl.type, armorPen: pl.armorPen ?? 0, crit });
+    if (dmg > 0) zs.damage(v, dmg, sourceId, { type: pl.type, armorPen: pl.armorPen ?? 0, crit, tags: pl.tags });
     if (!v.alive) return;
+    if (pl.poison) zs.addDot(v, { ...pl.poison, ownerId: sourceId, type: 'poison' });
     if (pl.shred) zs.applyShred(v, pl.shred.amount, pl.shred.duration);
     if (pl.burn) zs.addDot(v, { ...pl.burn, ownerId: sourceId, type: 'fire' });
     if (pl.bleed) zs.addDot(v, { dps: dmg * pl.bleed.dps, duration: pl.bleed.duration, ownerId: sourceId, type: 'true' });

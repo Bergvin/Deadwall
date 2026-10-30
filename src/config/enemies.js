@@ -6,6 +6,15 @@
 //
 // model refers to config/assets.js; scale and tint change the look of a shared model.
 // Behaviour flags are read by core/zombies.js.
+//
+// Traits (like camo, lead and purple bloons in Bloons TD): towers are good against some
+// enemies and useless against others.
+//   stealth    invisible: only towers that detect (Watchtower, Arcane Seer, Arrow Sniper)
+//              can aim at it, or any tower once a Watchtower has revealed it. Splash still hits.
+//   immune     damage types that do nothing at all (Ghost: physical)
+//   immuneTags attack tags that bounce off (Ironclad: 'sharp' = arrows and gusts)
+//   regen      {pct, delay}: regains pct of max HP per second after `delay` s without
+//              damage; poison on it stops the regeneration
 
 export const ZOMBIES = {
   walker: {
@@ -56,6 +65,46 @@ export const ZOMBIES = {
     model: 'brute', scale: 1.3, tint: [1.2, 0.6, 0.45],
     /** Attacks towers within `range` of it: each hit drains ammo and jams; moves on after `hits`. */
     smasher: { range: 2.2, hits: 3, ammoDrain: 0.35, jam: 2 },
+  },
+  wraith: {
+    name: 'Wraith',
+    description: 'Invisible. Only towers that detect can see it: build a Watchtower nearby.',
+    hp: 70, armor: 0, resist: 0.2,
+    speed: 1.0,
+    damage: 6, attackInterval: 1,
+    reward: 9, xp: 18,
+    model: 'runner', scale: 1, tint: [0.55, 0.42, 0.9],
+    stealth: true,
+  },
+  ghost: {
+    name: 'Ghost',
+    description: 'Arrows, boulders and rolling stones pass straight through. Use magic, fire or poison.',
+    hp: 90, armor: 0, resist: 0,
+    speed: 0.8,
+    damage: 6, attackInterval: 1.2,
+    reward: 9, xp: 18,
+    model: 'walker', scale: 0.95, tint: [0.8, 1.15, 1.45],
+    immune: ['physical'],
+  },
+  ironclad: {
+    name: 'Ironclad',
+    description: 'Iron plates: arrows and gusts bounce off. Boulders, fire, magic and poison work.',
+    hp: 200, armor: 0.3, resist: 0,
+    speed: 0.55,
+    damage: 12, attackInterval: 1.6,
+    reward: 15, xp: 35,
+    model: 'brute', scale: 1.25, tint: [0.72, 0.78, 0.9],
+    immuneTags: ['sharp'],
+  },
+  rotter: {
+    name: 'Rotter',
+    description: 'Its flesh grows back when it is left alone. Poison stops the regrowth.',
+    hp: 140, armor: 0.1, resist: 0.1,
+    speed: 0.7,
+    damage: 8, attackInterval: 1.4,
+    reward: 10, xp: 22,
+    model: 'walker', scale: 1.05, tint: [0.75, 0.95, 0.5],
+    regen: { pct: 0.08, delay: 1.5 },
   },
 
   // Bosses: one every few waves (see WAVE_TABLE.bossEvery). Abilities run on their own timers.
@@ -108,6 +157,10 @@ export const WAVE_TABLE = {
     { type: 'brute', from: 4, base: 1, perWave: 0.7 },
     { type: 'plague', from: 6, base: 1, perWave: 0.5 },
     { type: 'siege', from: 7, base: 1, perWave: 0.5 },
+    { type: 'ironclad', from: 7, base: 1, perWave: 0.4 },
+    { type: 'ghost', from: 8, base: 2, perWave: 0.5 },
+    { type: 'wraith', from: 10, base: 2, perWave: 0.5 },
+    { type: 'rotter', from: 12, base: 1, perWave: 0.5 },
   ],
   bossEvery: 5,
   bosses: ['behemoth', 'gravelord'],
