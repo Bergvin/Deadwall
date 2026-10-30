@@ -155,13 +155,14 @@ export class TowerSystem {
   /** True when the next upgrade asks for a specialisation. */
   needsSpec(id) {
     const t = this.get(id);
-    return !!t && !t.spec && t.level + 1 >= this.rules.specLevel;
+    return !!t && !t.pending && !t.spec && t.level + 1 >= this.rules.specLevel;
   }
 
   /** @returns {{ok: true} | {ok: false, reason: string}} */
   canUpgrade(id, spec = null) {
     const t = this.get(id);
     if (!t) return { ok: false, reason: 'no_tower' };
+    if (t.pending) return { ok: false, reason: 'upgrading' };
     if (t.level >= this.rules.maxLevel) return { ok: false, reason: 'max_level' };
     if (this.needsSpec(id) && !this.types[t.type].specs?.[spec]) return { ok: false, reason: 'choose_spec' };
     if (!this.economy.canAfford(this.upgradeCost(id))) return { ok: false, reason: 'insufficient_gold' };
@@ -177,13 +178,48 @@ export class TowerSystem {
     const t = this.get(id);
     if (!this.economy.trySpend(this.upgradeCost(id), `towerUpgrade:${t.type}`)) return false;
     t.invested += this.#upgradeBase(t);
-    t.level++;
-    if (this.needsSpecAt(t, spec)) t.spec = spec;
+    // Paid now, built by the runner (see RunnerSystem): the tower waits for him.
+    const level = t.level + 1;
+    t.pending = { level, spec: !t.spec && level >= this.rules.specLevel ? spec : null, work: this.rules.buildTime(level), done: 0, lastWork: -1 };
+    this.events.emit('towerUpgradeQueued', t);
+    return true;
+  }
+
+  /** True while the runner is working on the tower's upgrade (it cannot fire meanwhile). */
+  isBuilding(t) {
+    return !!t.pending && this.time - t.pending.lastWork < 0.15;
+  }
+
+  /** Fraction of the pending upgrade built (0 when there is none). */
+  buildProgress(t) {
+    return t.pending ? Math.min(1, t.pending.done / t.pending.work) : 0;
+  }
+
+  /** The runner works `seconds` on a tower's upgrade. @returns {boolean} true when finished */
+  workOn(id, seconds) {
+    const t = this.get(id);
+    if (!t?.pending) return false;
+    t.pending.done += seconds;
+    t.pending.lastWork = this.time;
+    if (t.pending.done < t.pending.work) return false;
+    this.finishUpgrade(id);
+    return true;
+  }
+
+  /** Completes a tower's pending upgrade now. */
+  finishUpgrade(id, { instant = false } = {}) {
+    const t = this.get(id);
+    if (!t?.pending) return false;
+    const p = t.pending;
+    t.pending = null;
+    t.level = p.level;
+    if (p.spec && !t.spec) t.spec = p.spec;
     const before = t.stats.maxAmmo;
     t.stats = towerStats(this.types[t.type], t.level, t.spec, this.rules);
     // The bigger magazine comes filled up by the difference.
     t.ammo = Math.min(t.stats.maxAmmo, t.ammo + (t.stats.maxAmmo - before));
     this.events.emit('towerUpgraded', t);
+    if (instant) this.events.emit('towerInstantUpgrade', t);
     return true;
   }
 
@@ -296,7 +332,7 @@ export class TowerSystem {
       }
       if (t.buffs.length && t.buffs.every((b) => b.until <= this.time)) t.buffs.length = 0;
       t.cooldown = Math.max(0, t.cooldown - dt);
-      if (t.cooldown > 0 || this.time < t.jammedUntil) continue;
+      if (t.cooldown > 0 || this.time < t.jammedUntil || this.isBuilding(t)) continue;
       if (t.ammo < 1) {
         const m = this.modsOf(t);
         if (!m.freeAmmo) {

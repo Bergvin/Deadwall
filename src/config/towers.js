@@ -88,6 +88,12 @@ export const TOWERS = {
 
 export const TOWER_RULES = {
   maxLevel: 10,
+  /**
+   * Upgrades are paid at once but built by the runner: he walks over and works on the tower
+   * for buildTime(level) seconds (level = the level being built). The tower is out of action
+   * while he works on it.
+   */
+  buildTime: (level) => 2 + 0.6 * level,
   /** Free cells required between two towers (1 = no tower on the 8 cells around another). */
   spacing: 1,
   /** Upgrading to this level asks for one of the tower's two specialisations. */

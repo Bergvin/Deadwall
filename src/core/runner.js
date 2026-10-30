@@ -4,9 +4,10 @@
 // three perks, chosen between waves. Perks can add a second runner (Twin Brother), so the
 // system keeps a list of runner units that share one set of perks, spells and levels.
 //
-// Supply logic: player orders (orderRefill) come first; otherwise each runner picks the
-// tower that needs ammo most (ammo fraction below RUNNER.autoThreshold, nearer is better).
-// With no crates left he runs home to reload.
+// Supply logic: player orders (orderRefill) come first, then tower upgrades waiting to be
+// built (he works on the tower for TOWER_RULES.buildTime; it cannot fire meanwhile);
+// otherwise each runner picks the tower that needs ammo most (ammo fraction below
+// RUNNER.autoThreshold, nearer is better). With no crates left he runs home to reload.
 import { findPath } from './pathfinding.js';
 import { RARITIES } from '../config/rarities.js';
 
@@ -62,6 +63,7 @@ export class RunnerSystem {
       id: this.#nextId++, name,
       x: d.x + 0.5, z: d.y + 0.5,
       state: 'idle', job: null, route: [], routeI: 0, timer: 0,
+      // states: idle, toTower, toHouse, refill, reload, build, bonked
       crates: this.maxCrates, bonkUntil: 0, immuneUntil: 0, facing: 0, moving: false, replan: 0,
     };
     this.units.push(u);
@@ -100,6 +102,7 @@ export class RunnerSystem {
   get speed() { return this.cfg.speed * (1 + (this.mods.speedPct ?? 0) / 100); }
   get workMult() { return Math.max(0, 1 - (this.mods.refillPct ?? 0) / 100); }
   get spellRadius() { return this.cfg.spellRadius + (this.mods.radiusAdd ?? 0); }
+  get buildMult() { return 1 + (this.mods.buildPct ?? 0) / 100; }
 
   // --- XP, levels and picks ----------------------------------------------------------
 
@@ -309,10 +312,28 @@ export class RunnerSystem {
     return 1 - t.ammo / t.stats.maxAmmo;
   }
 
-  /** Next job for a runner: {kind: 'order'|'auto'|'reload', towerId?}. */
+  /** A paid upgrade waits for a runner: a free one drops its auto job and comes. */
+  callBuilder(towerId) {
+    const u = this.units.filter((x) => x.state !== 'refill' && x.state !== 'reload' && x.state !== 'build'
+      && x.job?.kind !== 'order' && x.job?.kind !== 'build')
+      .sort((a, b) => this.#distTo(a, towerId) - this.#distTo(b, towerId))[0];
+    if (u) { u.job = null; u.state = 'idle'; }
+  }
+
+  /** Next job for a runner: {kind: 'order'|'build'|'auto'|'reload', towerId?}. */
   #nextJob(u) {
-    if (u.crates <= 0) return { kind: 'reload' };
     const claimed = new Set(this.units.filter((o) => o !== u && o.job?.towerId).map((o) => o.job.towerId));
+    // Orders for ammo need crates; upgrades waiting to be built do not.
+    if (!(this.orders.length && u.crates > 0)) {
+      let build = null, bd = Infinity;
+      for (const t of this.towers.all()) {
+        if (!t.pending || claimed.has(t.id)) continue;
+        const d = Math.hypot(t.cx - u.x, t.cz - u.z);
+        if (d < bd) { bd = d; build = t; }
+      }
+      if (build) return { kind: 'build', towerId: build.id };
+    }
+    if (u.crates <= 0) return { kind: 'reload' };
     while (this.orders.length) {
       const id = this.orders[0];
       const t = this.towers.get(id);
@@ -362,6 +383,12 @@ export class RunnerSystem {
     }
   }
 
+  #upgradeDone(t, u) {
+    this.stats.upgradesBuilt = (this.stats.upgradesBuilt ?? 0) + 1;
+    if (this.mods.buildRefill) this.towers.refill(t.id);
+    this.events.emit('runnerBuilt', { tower: t, runner: u });
+  }
+
   #fill(t) {
     this.towers.refill(t.id);
     const m = this.mods;
@@ -399,6 +426,16 @@ export class RunnerSystem {
     this.#checkBonk(u, m);
     if (this.time < u.bonkUntil) return;
 
+    if (u.state === 'build') {
+      const t = this.towers.get(u.job?.towerId);
+      if (t?.pending) {
+        if (!this.towers.workOn(t.id, dt * this.buildMult)) return;
+        this.#upgradeDone(t, u);
+      }
+      u.state = 'idle';
+      u.job = null;
+    }
+
     if (u.state === 'refill' || u.state === 'reload') {
       u.timer -= dt;
       if (u.timer > 0) return;
@@ -424,7 +461,8 @@ export class RunnerSystem {
       const t = this.towers.get(u.job.towerId);
       if (!t || t.ammo >= t.stats.maxAmmo) u.job = null;
       else if (u.replan <= 0 && this.orders.length) u.job = null;
-    } else if (u.job?.towerId && !this.towers.get(u.job.towerId)) u.job = null;
+    } else if (u.job?.kind === 'build' && !this.towers.get(u.job.towerId)?.pending) u.job = null;
+    else if (u.job?.towerId && !this.towers.get(u.job.towerId)) u.job = null;
 
     if (!u.job) {
       const job = this.#nextJob(u);
@@ -442,6 +480,23 @@ export class RunnerSystem {
       }
     } else {
       const t = this.towers.get(u.job.towerId);
+      if (u.job.kind === 'build' && Math.hypot(t.cx - u.x, t.cz - u.z) <= this.cfg.reach) {
+        u.facing = Math.atan2(t.cx - u.x, t.cz - u.z);
+        // Prefab Parts: some upgrades snap together the moment he arrives (one roll each).
+        if (!t.pending.rolled) {
+          t.pending.rolled = true;
+          if (this.rng.next() * 100 < (this.mods.instantPct ?? 0)) {
+            this.towers.finishUpgrade(t.id, { instant: true });
+            this.#upgradeDone(t, u);
+            u.state = 'idle';
+            u.job = null;
+            return;
+          }
+        }
+        u.state = 'build';
+        this.events.emit('runnerBuilding', { tower: t, runner: u });
+        return;
+      }
       if (Math.hypot(t.cx - u.x, t.cz - u.z) <= this.cfg.reach) {
         u.state = 'refill';
         u.timer = this.cfg.refillTime * this.workMult;

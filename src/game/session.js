@@ -144,6 +144,8 @@ export class Session {
       effects.burst({ x: tower.cx, y: 1, z: tower.cz }, { count: 14, color: 0x9a8f80, size: 0.08, speed: 1.6, up: 2, life: 0.7, spread: 0.4 });
     });
     ev.on('towerJammed', ({ tower }) => floaters.spawn({ x: tower.cx, y: 2.6, z: tower.cz }, 'Jammed!', 'wall'));
+    ev.on('towerUpgradeQueued', (t) => floaters.spawn({ x: t.cx, y: 2.6, z: t.cz }, 'Upgrade ordered', 'cast'));
+    ev.on('towerInstantUpgrade', (t) => floaters.spawn({ x: t.cx, y: 2.8, z: t.cz }, 'Snap! Instant upgrade', 'level'));
     ev.on('towerUpgraded', (t) => {
       fx.ring(t.cx, t.cz, 1, FX_COLORS.level, 0.6, 0.15);
       effects.burst({ x: t.cx, y: 1.6, z: t.cz }, { count: 14, color: FX_COLORS.level, size: 0.05, speed: 0.8, up: 2, life: 0.7, spread: 0.4 });

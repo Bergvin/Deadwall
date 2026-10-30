@@ -65,6 +65,7 @@ export class Simulation {
       grid, house: this.house, towers: this.towers, zombies: this.zombies, zones: this.zones,
       events: this.events, rng: this.rng, cfg: c.RUNNER, spells: c.SPELLS, spellRank: c.SPELL_RANK, perks: c.RUNNER_PERKS,
     });
+    this.events.on('towerUpgradeQueued', (t) => this.runner.callBuilder(t.id));
     // The Commander's automatic abilities (skills and artifacts), when there are any.
     this.abilities = Object.keys(c.COMMANDER_ABILITIES ?? {}).length ? new CommanderAbilitySystem({
       powers: c.COMMANDER_ABILITIES, zombies: this.zombies, towers: this.towers, house: this.house,

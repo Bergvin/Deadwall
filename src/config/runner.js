@@ -97,7 +97,8 @@ export const SPELL_RANK = { duration: 0.3, power: 0.25, cooldown: 0.12, maxRank:
  * (tower attack speed after a refill), recycle (ammo back per kill), tinker (ammo/s to
  * towers near him), goldenAmmo (refilled towers +% damage), stomp (he flattens zombies
  * instead of falling over), twin (a second runner), perpetual (towers near him need no
- * ammo), xpPct.
+ * ammo), xpPct, buildPct (faster upgrade building), instantPct (chance an upgrade finishes
+ * the moment he arrives), buildRefill (finished upgrades come with full ammo).
  */
 export const RUNNER_PERKS = {
   // Common
@@ -106,7 +107,9 @@ export const RUNNER_PERKS = {
   coffee: { name: 'Strong Coffee', rarity: 'common', maxRank: 5, mods: (r) => ({ cooldownPct: 8 * r }), text: (r) => `-${8 * r}% spell cooldowns` },
   whistle: { name: 'Loud Whistle', rarity: 'common', maxRank: 4, mods: (r) => ({ radiusAdd: 0.5 * r }), text: (r) => `+${0.5 * r} spell radius` },
   nimble: { name: 'Nimble Fingers', rarity: 'common', maxRank: 3, mods: (r) => ({ refillPct: 25 * r }), text: (r) => `Refills and reloads ${25 * r}% faster` },
+  handyman: { name: 'Handyman', rarity: 'common', maxRank: 4, mods: (r) => ({ buildPct: 30 * r }), text: (r) => `Builds tower upgrades ${30 * r}% faster` },
   // Uncommon
+  fullService: { name: 'Full Service', rarity: 'uncommon', maxRank: 1, mods: () => ({ buildRefill: 1 }), text: () => 'A tower he finishes upgrading comes fully loaded with ammo' },
   helmet: { name: 'Saucepan Helmet', rarity: 'uncommon', maxRank: 3, mods: (r) => ({ bonkPct: 25 * r }), text: (r) => `Knocked over ${25 * r}% shorter` },
   oiled: { name: 'Oiled Gears', rarity: 'uncommon', maxRank: 3, mods: (r) => ({ refillHaste: 25 * r }), text: (r) => `A tower he refills attacks ${25 * r}% faster for 8s` },
   recycler: { name: 'Ammo Recycler', rarity: 'uncommon', maxRank: 3, mods: (r) => ({ recycle: 0.34 * r }), text: (r) => `Kills give the killing tower ${Math.round(34 * r)}% of a shot back` },
@@ -121,6 +124,7 @@ export const RUNNER_PERKS = {
   learnOverclock: { name: 'Duct-Tape Overclock', rarity: 'rare', spell: 'overclock' },
   learnTea: { name: 'Tea Break', rarity: 'rare', spell: 'teaBreak' },
   wisdom: { name: 'Pocket Almanac', rarity: 'rare', maxRank: 3, mods: (r) => ({ xpPct: 20 * r }), text: (r) => `+${20 * r}% runner XP` },
+  prefab: { name: 'Prefab Parts', rarity: 'rare', maxRank: 3, mods: (r) => ({ instantPct: 20 * r }), text: (r) => `${20 * r}% chance an upgrade snaps together the moment he arrives` },
   // Epic
   goldenAmmo: { name: 'Golden Ammo', rarity: 'epic', maxRank: 2, mods: (r) => ({ goldenAmmo: 25 * r }), text: (r) => `Towers he refills deal +${25 * r}% damage until their next refill` },
   stomp: { name: 'Stompy Boots', rarity: 'epic', maxRank: 1, mods: () => ({ stomp: 1 }), text: () => 'Zombies that touch him get flattened (stunned and hurt) instead of him' },
@@ -128,6 +132,7 @@ export const RUNNER_PERKS = {
   // Legendary
   twin: { name: 'Twin Brother', rarity: 'legendary', maxRank: 1, mods: () => ({ twin: 1 }), text: () => 'His twin brother shows up and runs ammo too' },
   express: { name: 'Express Delivery', rarity: 'legendary', maxRank: 1, mods: () => ({ speedPct: 35, refillPct: 100 }), text: () => '+35% speed, instant refills' },
+  masterBuilder: { name: 'Master Builder', rarity: 'legendary', maxRank: 1, mods: () => ({ buildPct: 150, instantPct: 25 }), text: () => 'Builds upgrades 2.5x as fast, 25% of them instantly' },
   // Mythical
   perpetual: { name: 'Perpetual Motion', rarity: 'mythical', maxRank: 1, mods: () => ({ perpetual: 3.5 }), text: () => 'Towers within 3.5 of him need no ammo at all' },
   timeLord: { name: 'Pocket Watch of Ages', rarity: 'mythical', maxRank: 1, mods: () => ({ cooldownPct: 40, durationPct: 50 }), text: () => '-40% spell cooldowns, +50% spell duration' },

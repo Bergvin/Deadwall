@@ -139,7 +139,7 @@ export class RunnerView {
       node.root.rotation.y = u.facing;
       node.hitbox.position.set(u.x, 0, u.z);
       this.#stackCrates(node, u.crates);
-      const state = u.state === 'bonked' ? 'bonked' : u.moving ? 'run' : (u.state === 'refill' || u.state === 'reload') ? 'work' : 'idle';
+      const state = u.state === 'bonked' ? 'bonked' : u.moving ? 'run' : (u.state === 'refill' || u.state === 'reload' || u.state === 'build') ? 'work' : 'idle';
       if (state !== 'bonked') this.#setBase(node, state === 'work' ? 'work' : state === 'run' ? 'run' : 'idle');
       if (node.actions.run) node.actions.run.timeScale = 1.3;
       node.mixer.update(dt);

@@ -114,6 +114,7 @@ export class TowerView {
     const n = this.#nodes.get(id);
     if (!n) return;
     this.group.remove(n.root);
+    if (n.build) { n.build.geometry.dispose(); n.build.material.dispose(); }
     this.#nodes.delete(id);
   }
 
@@ -141,7 +142,36 @@ export class TowerView {
       n.warn.position.y = n.orbY + 0.55 + Math.sin(this.time * 4) * 0.06;
       // A jammed tower's orb goes dark.
       n.orb.visible = !(t && this.towers.time < t.jammedUntil) || Math.sin(this.time * 20) > 0;
+      this.#buildRing(n, t);
     }
+  }
+
+  /** Upgrade waiting for the runner (pulsing ring) or being built (orange progress arc). */
+  #buildRing(n, t) {
+    if (!t?.pending) {
+      if (n.build) { n.root.remove(n.build); n.build.geometry.dispose(); n.build.material.dispose(); n.build = null; }
+      return;
+    }
+    if (!n.build) {
+      n.build = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.74, 48), new THREE.MeshBasicMaterial({
+        color: 0xffa040, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide,
+      }));
+      n.build.rotation.x = -Math.PI / 2;
+      n.build.position.y = 0.05;
+      n.build.renderOrder = 4;
+      n.buildStep = -1;
+      n.root.add(n.build);
+    }
+    const building = this.towers.isBuilding(t);
+    // Rebuild the arc only when it has grown a visible step.
+    const step = building ? Math.round(this.towers.buildProgress(t) * 48) : 48;
+    if (step !== n.buildStep) {
+      n.buildStep = step;
+      n.build.geometry.dispose();
+      n.build.geometry = new THREE.RingGeometry(0.62, 0.74, 48, 1, Math.PI / 2, Math.max(0.01, (step / 48) * Math.PI * 2));
+    }
+    n.build.material.opacity = building ? 0.95 : 0.35 + 0.3 * Math.sin(this.time * 6);
+    if (building) n.orb.visible = Math.sin(this.time * 8) > 0.6;
   }
 
   dispose() {

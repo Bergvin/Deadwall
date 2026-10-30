@@ -61,7 +61,7 @@ export class Hud {
     const refresh = () => this.refresh();
     for (const t of ['goldChanged', 'towerBuilt', 'towerRemoved', 'towerUpgraded', 'waveStarted', 'waveCleared', 'towerSlotOpened']) ev.on(t, refresh);
     const rebuild = () => this.showSelection(this.selection);
-    for (const t of ['towerUpgraded', 'runnerPerkChosen', 'runnerLevelUp', 'waveStarted', 'waveCleared', 'houseRepaired']) ev.on(t, rebuild);
+    for (const t of ['towerUpgraded', 'towerUpgradeQueued', 'runnerPerkChosen', 'runnerLevelUp', 'waveStarted', 'waveCleared', 'houseRepaired']) ev.on(t, rebuild);
     ev.on('runnerPerkChosen', () => this.#buildSpells());
     ev.on('bossSpawned', (z) => this.showBanner(this.cfg.ZOMBIES[z.type].name, this.cfg.ZOMBIES[z.type].description));
     ev.on('waveStarted', ({ wave, variant, early }) => {
@@ -200,7 +200,7 @@ export class Hud {
     const q = (c) => this.runnerBar.querySelector(c);
     const u = r.main;
     q('.v-lvl').textContent = `Lv ${r.level}`;
-    const STATE = { idle: 'waiting', toTower: 'running to a tower', toHouse: 'fetching crates', refill: 'filling a tower', reload: 'grabbing crates', bonked: 'seeing stars!' };
+    const STATE = { idle: 'waiting', toTower: 'running to a tower', toHouse: 'fetching crates', refill: 'filling a tower', reload: 'grabbing crates', build: 'building an upgrade', bonked: 'seeing stars!' };
     q('.v-state').textContent = STATE[u.state] ?? u.state;
     q('.v-xp').style.width = `${Math.min(100, (r.xp / this.cfg.RUNNER.xpToNext(r.level)) * 100).toFixed(1)}%`;
     const crates = `${'▣'.repeat(Math.min(u.crates, 8))}${'□'.repeat(Math.max(0, Math.min(r.maxCrates, 8) - u.crates))}`;
@@ -304,7 +304,13 @@ export class Hud {
     this.side.append(upWrap);
     const specBtns = [];
     let upgrade = null;
-    if (sim.towers.needsSpec(tower.id)) {
+    let building = null;
+    if (tower.pending) {
+      building = h('div', 'buildbox',
+        `<div class="row"><span>Upgrading to level ${tower.pending.level}</span><b class="v-bstate"></b></div>`
+        + '<div class="bar build"><div class="v-bbar"></div></div>');
+      upWrap.append(building);
+    } else if (sim.towers.needsSpec(tower.id)) {
       upWrap.append(h('div', 'section', `Level ${tower.level + 1}: choose a specialisation`));
       const row = h('div', 'specrow');
       for (const k of ['a', 'b']) {
@@ -351,6 +357,11 @@ export class Hud {
       ].filter(Boolean).join(' · ');
       q('.v-buffrow').style.display = boosts ? '' : 'none';
       q('.v-buff').textContent = boosts;
+      if (building) {
+        const st = sim.towers.isBuilding(tower) ? `building ${Math.round(sim.towers.buildProgress(tower) * 100)}%` : `waiting for ${sim.runner.name.split(' ')[0]}`;
+        if (q('.v-bstate').textContent !== st) q('.v-bstate').textContent = st;
+        q('.v-bbar').style.width = `${(sim.towers.buildProgress(tower) * 100).toFixed(1)}%`;
+      }
       const cost = sim.towers.upgradeCost(tower.id);
       if (upgrade) {
         const ul = next ? `Upgrade to level ${tower.level + 1} (dmg ${fmt(next.damage, 1)}) for ${cost} gold <span class="k">U</span>` : 'Fully upgraded';

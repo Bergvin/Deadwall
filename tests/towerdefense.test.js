@@ -94,16 +94,18 @@ test('upgrades: expensive, stronger every level, a specialisation at the spec le
   const sim = fresh();
   const c = besideRoad(sim, 8);
   const t = sim.towers.build('arrow', c.x, c.y);
+  // Pay, then finish the build at once (the runner's part is tested separately).
+  const up = (spec) => { const ok = sim.towers.upgrade(t.id, spec); if (ok) sim.towers.finishUpgrade(t.id); return ok; };
   const costs = [];
-  while (t.level < CFG.TOWER_RULES.specLevel - 1) { costs.push(sim.towers.upgradeCost(t.id)); assert.ok(sim.towers.upgrade(t.id)); }
+  while (t.level < CFG.TOWER_RULES.specLevel - 1) { costs.push(sim.towers.upgradeCost(t.id)); assert.ok(up()); }
   for (let i = 1; i < costs.length; i++) assert.ok(costs[i] > costs[i - 1] * 1.3, 'each level costs a lot more');
   assert.ok(sim.towers.needsSpec(t.id));
-  assert.equal(sim.towers.upgrade(t.id), false, 'needs a specialisation');
-  assert.ok(sim.towers.upgrade(t.id, 'a'));
+  assert.equal(up(), false, 'needs a specialisation');
+  assert.ok(up('a'));
   assert.equal(t.spec, 'a');
   assert.equal(t.stats.targets, 3, 'Volley shoots three');
-  while (t.level < CFG.TOWER_RULES.maxLevel) assert.ok(sim.towers.upgrade(t.id));
-  assert.equal(sim.towers.upgrade(t.id), false);
+  while (t.level < CFG.TOWER_RULES.maxLevel) assert.ok(up());
+  assert.equal(up(), false);
   const s1 = towerStats(CFG.TOWERS.arrow, 1, null, CFG.TOWER_RULES), s10 = towerStats(CFG.TOWERS.arrow, 10, 'b', CFG.TOWER_RULES);
   assert.ok(s10.damage > s1.damage * 15 && s10.range > s1.range + 3 && s10.maxAmmo > s1.maxAmmo);
   // Every tower type has two specialisations that change something.
@@ -313,4 +315,65 @@ test('runner auto-cast: the all-spells switch covers spells learned later; right
   assert.equal(r.isAutoCast('pepTalk'), false);
   r.setAutoCastAll(true);
   assert.equal(r.isAutoCast('pepTalk'), true, 'the switch clears single-spell choices');
+});
+
+test('upgrades are built by the runner: the tower waits, then is out of action while he works', () => {
+  const sim = fresh();
+  const c = besideRoad(sim, 8);
+  const t = sim.towers.build('arrow', c.x, c.y);
+  t.ammo = t.stats.maxAmmo;
+  assert.ok(sim.towers.upgrade(t.id));
+  assert.equal(t.level, 1, 'paid, not built yet');
+  assert.ok(t.pending);
+  assert.equal(sim.towers.canUpgrade(t.id).reason, 'upgrading', 'one upgrade at a time');
+  let building = 0, started = false;
+  sim.events.on('runnerBuilding', () => { started = true; });
+  for (let i = 0; i < 60 * 30 && t.pending; i++) {
+    sim.step(1 / 60);
+    if (sim.towers.isBuilding(t)) building += 1 / 60;
+  }
+  assert.ok(started, 'the runner came to build');
+  assert.equal(t.level, 2, 'built');
+  assert.ok(Math.abs(building - CFG.TOWER_RULES.buildTime(2)) < 0.2, `he worked about buildTime (${building.toFixed(2)}s)`);
+  // While he works the tower does not fire.
+  assert.ok(sim.towers.upgrade(t.id));
+  for (let i = 0; i < 60 * 30 && !sim.towers.isBuilding(t); i++) sim.step(1 / 60);
+  sim.zombies.spawn('walker', 0, 1, { s: 6 });
+  const ammo = t.ammo;
+  for (let i = 0; i < 30; i++) sim.step(1 / 60);
+  assert.ok(sim.towers.isBuilding(t));
+  assert.equal(t.ammo, ammo, 'no shots while being built');
+});
+
+test('build perks: Handyman builds faster, Prefab Parts can finish at once, Full Service refills', () => {
+  const time = (perks) => {
+    const sim = fresh();
+    for (const [id, n] of perks) for (let i = 0; i < n; i++) sim.runner.grant(id);
+    const c = besideRoad(sim, 8);
+    const t = sim.towers.build('arrow', c.x, c.y);
+    t.ammo = 1;
+    sim.towers.upgrade(t.id);
+    let n = 0;
+    while (t.pending && n < 60 * 40) { sim.step(1 / 60); n++; }
+    return { secs: n / 60, ammo: t.ammo, max: t.stats.maxAmmo, instant: sim.runner.stats.upgradesBuilt };
+  };
+  const base = time([]);
+  const fast = time([['handyman', 4]]);
+  assert.ok(fast.secs < base.secs - 1, `handyman is faster (${fast.secs} vs ${base.secs})`);
+  const full = time([['fullService', 1]]);
+  assert.equal(full.ammo, full.max, 'Full Service comes loaded');
+  assert.ok(base.ammo < base.max);
+  // Prefab: over many upgrades some finish without any work.
+  const sim = fresh();
+  for (let i = 0; i < 3; i++) sim.runner.grant('prefab');
+  let instant = 0;
+  sim.events.on('towerInstantUpgrade', () => instant++);
+  const c = besideRoad(sim, 8);
+  const t = sim.towers.build('arrow', c.x, c.y);
+  for (let k = 0; k < 9; k++) {
+    sim.towers.upgrade(t.id, 'a');
+    while (t.pending) sim.step(1 / 60);
+  }
+  assert.equal(t.level, 10);
+  assert.ok(instant >= 1, `some upgrades were instant (${instant})`);
 });
