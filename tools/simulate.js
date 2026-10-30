@@ -13,6 +13,12 @@
 //   PARAMS='{"aoeWeight":0.5}'  overrides bot profile fields (tuning)
 //   SWEEP='{"aoeWeight":[0.3,0.6],"slowWeight":[0.2,0.4]}'  plays every combination with the
 //              first bot and prints the average wave per combination (best first)
+//   GRANT=perk,perk  the runner starts with these perks (spells: learnX perks)
+//   GRANTS=all  experiment: one set of runs per runner perk, each granted at the start,
+//              against runs without; prints the average wave and the difference per perk
+//   With STATS the tower table shows per type and specialisation: towers built per run, final
+//   level, damage per run, damage per 100 gold invested, kills, share of the wave time out of
+//   ammo and share being upgraded; then spell casts and runner work per run.
 // Runs use seeds SEED0 + i * 7919 (SEED0 defaults to 1000), so every bot plays the same waves;
 // tune on the default seeds and check the result on others (e.g. SEED0=5000).
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
@@ -63,33 +69,66 @@ function commanderConfig(name) {
 const DT = 1 / 30;
 
 /** One run: a bot on a map with a seed. Returns the summary plus what happened. */
-function play({ bot: botName, seed, map, maxMinutes, commander, params }) {
+function play({ bot: botName, seed, map, maxMinutes, commander, params, grant }) {
   const sim = new Simulation({ seed, config: commanderConfig(commander), mapId: map });
   const bot = createBot(botName, params);
+  for (const id of grant ?? []) sim.runner.grant(id);
+  // Every tower that stood: what it cost, what it did, how long it sat idle.
+  const records = new Map();
+  const rec = (t) => {
+    let r = records.get(t.id);
+    if (!r) { r = { type: t.type, damage: 0, kills: 0, empty: 0, building: 0, active: 0 }; records.set(t.id, r); }
+    r.spec = t.spec ? `${t.type}:${sim.config.TOWERS[t.type].specs[t.spec].name}` : null;
+    r.level = t.level;
+    r.invested = t.invested;
+    return r;
+  };
+  sim.events.on('towerBuilt', (t) => rec(t));
+  sim.events.on('towerRemoved', ({ tower }) => rec(tower));
+  const casts = {};
+  sim.events.on('spellCast', ({ id }) => { casts[id] = (casts[id] ?? 0) + 1; });
   const damage = {}, kills = {}, leaks = {};
   const towerKey = (id) => {
     const t = sim.towers.get(id);
     return t ? { type: t.type, spec: t.spec ? `${t.type}:${sim.config.TOWERS[t.type].specs[t.spec].name}` : null } : null;
   };
   sim.events.on('zombieDamaged', ({ amount, sourceId }) => {
+    const t = sim.towers.get(sourceId);
+    if (t) rec(t).damage += amount;
     const k = towerKey(sourceId);
     const key = k ? k.type : 'other';
     damage[key] = (damage[key] ?? 0) + amount;
     if (k?.spec) damage[k.spec] = (damage[k.spec] ?? 0) + amount;
   });
   sim.events.on('zombieKilled', ({ killerId }) => {
+    const t = sim.towers.get(killerId);
+    if (t) rec(t).kills++;
     const k = towerKey(killerId);
     const key = k ? k.type : 'other';
     kills[key] = (kills[key] ?? 0) + 1;
   });
   sim.events.on('zombieLeaked', ({ zombie, damage: d }) => { leaks[zombie.type] = (leaks[zombie.type] ?? 0) + d; });
   const limit = maxMinutes * 60;
+  let tick = 0;
   while (!sim.over && sim.time < limit) {
     bot.step(sim, DT);
     sim.step(DT);
+    // Idle time during waves, sampled every half second.
+    if (++tick % 15 === 0 && sim.waves.phase === 'active') {
+      for (const t of sim.towers.all()) {
+        const r = rec(t);
+        r.active += 0.5;
+        if (t.ammo < 1) r.empty += 0.5;
+        if (sim.towers.isBuilding(t)) r.building += 0.5;
+      }
+    }
   }
+  for (const t of sim.towers.all()) rec(t);
+  const rs = sim.runner.stats;
   return {
-    bot: botName, map, seed, params, ...sim.summary(), capped: !sim.over, damage, kills, leaks,
+    bot: botName, map, seed, params, grant,
+    towerRecords: [...records.values()], casts,
+    runnerWork: { refills: rs.refills, bonks: rs.bonks, cratesLost: rs.cratesLost, upgradesBuilt: rs.upgradesBuilt ?? 0, level: sim.runner.level }, ...sim.summary(), capped: !sim.over, damage, kills, leaks,
     perks: Object.entries(sim.runner.perks).map(([id, r]) => `${id}${r > 1 ? r : ''}`),
     spells: Object.keys(sim.runner.spells),
     towers: [...sim.towers.all()].map((x) => `${x.type}${x.level}${x.spec ?? ''}`),
@@ -117,8 +156,15 @@ if (!isMainThread) {
       combos = combos.flatMap((c) => values.map((v) => ({ ...c, [k]: v })));
     }
   }
-  const sweepBots = process.env.SWEEP ? [bots[0]] : bots;
-  for (const p of combos) for (const map of maps) for (const bot of sweepBots) for (let i = 0; i < runs; i++) jobs.push({ bot, map, seed: Number(process.env.SEED0 ?? 1000) + i * 7919, maxMinutes, commander, params: p });
+  const sweepBots = process.env.SWEEP || process.env.GRANTS ? [bots[0]] : bots;
+  // Perk experiment: a baseline without a grant plus one set of runs per perk.
+  const grants = process.env.GRANTS ? [[], ...Object.keys(CFG.RUNNER_PERKS).map((id) => [id])]
+    : [process.env.GRANT ? process.env.GRANT.split(',') : []];
+  for (const g of grants) {
+    for (const p of combos) for (const map of maps) for (const bot of sweepBots) for (let i = 0; i < runs; i++) {
+      jobs.push({ bot, map, seed: Number(process.env.SEED0 ?? 1000) + i * 7919, maxMinutes, commander, params: p, grant: g });
+    }
+  }
 
   const threads = Math.max(1, Math.min(jobs.length, Number(process.env.JOBS ?? cpus().length - 1)));
   const results = [];
@@ -143,6 +189,23 @@ if (!isMainThread) {
   process.stderr.write(`\r${jobs.length} runs in ${((Date.now() - started) / 1000).toFixed(0)} s on ${threads} threads\n`);
 
   const avg = (xs) => xs.reduce((a, x) => a + x, 0) / Math.max(1, xs.length);
+  const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s.length ? (s[(s.length - 1) >> 1] + s[s.length >> 1]) / 2 : 0; };
+  if (process.env.GRANTS) {
+    const base = avg(results.filter((r) => !r.grant.length).map((r) => r.wave));
+    const rows = grants.slice(1).map((g) => {
+      const res = results.filter((r) => r.grant[0] === g[0]);
+      const def = CFG.RUNNER_PERKS[g[0]];
+      return { id: g[0], name: def.name, rarity: def.rarity, wave: avg(res.map((r) => r.wave)), med: median(res.map((r) => r.wave)) };
+    }).sort((a, b) => b.wave - a.wave);
+    console.log(`baseline (no perk at start): ${base.toFixed(2)}`);
+    console.log(`${'perk'.padEnd(34)}${'rarity'.padEnd(11)}${'avg'.padStart(6)}${'diff'.padStart(7)}${'median'.padStart(8)}`);
+    for (const r of rows) {
+      const d = r.wave - base;
+      console.log(`${`${r.name} (${r.id})`.padEnd(34)}${r.rarity.padEnd(11)}${r.wave.toFixed(2).padStart(6)}${`${d >= 0 ? '+' : ''}${d.toFixed(2)}`.padStart(7)}${r.med.toFixed(1).padStart(8)}`);
+    }
+    if (process.env.OUT) writeFileSync(process.env.OUT, JSON.stringify({ maxMinutes, commander, base, rows }, null, 1));
+    process.exit(0);
+  }
   if (process.env.SWEEP) {
     const rows = combos.map((p) => {
       const res = results.filter((r) => JSON.stringify(r.params) === JSON.stringify(p));
@@ -153,7 +216,6 @@ if (!isMainThread) {
     for (const r of rows) console.log(`${r.all.toFixed(2).padStart(5)} ${r.perMap.map((x) => x.toFixed(1).padStart(9)).join('')}  ${JSON.stringify(r.p)}`);
     process.exit(0);
   }
-  const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s.length ? (s[(s.length - 1) >> 1] + s[s.length >> 1]) / 2 : 0; };
   console.log(`${'map'.padEnd(10)} ${'bot'.padEnd(15)} ${'avg'.padStart(5)} ${'median'.padStart(6)}  waves`);
   for (const map of maps) {
     for (const bot of bots) {
@@ -197,6 +259,28 @@ if (!isMainThread) {
         if (better.has(r)) all[id].top++;
       }
       const perks = Object.entries(all).filter(([, v]) => v.n >= 3).sort((a, b) => b[1].top / b[1].n - a[1].top / a[1].n);
+      // Towers: per type and per specialisation.
+      const table = (keyOf, label) => {
+        const g = {};
+        for (const r of res) for (const t of r.towerRecords) {
+          const k = keyOf(t);
+          if (!k) continue;
+          const a = (g[k] ??= { n: 0, level: 0, damage: 0, gold: 0, kills: 0, empty: 0, building: 0, active: 0 });
+          a.n++; a.level += t.level; a.damage += t.damage; a.gold += t.invested; a.kills += t.kills;
+          a.empty += t.empty; a.building += t.building; a.active += t.active;
+        }
+        console.log(`  ${label.padEnd(24)}${'per run'.padStart(8)}${'level'.padStart(7)}${'dmg/run'.padStart(9)}${'dmg/100g'.padStart(10)}${'kills'.padStart(7)}${'empty'.padStart(7)}${'build'.padStart(7)}`);
+        for (const [k, a] of Object.entries(g).sort((x, y) => y[1].damage - x[1].damage)) {
+          const pct = (x) => `${Math.round((x / Math.max(1, a.active)) * 100)}%`;
+          console.log(`  ${k.padEnd(24)}${(a.n / res.length).toFixed(2).padStart(8)}${(a.level / a.n).toFixed(1).padStart(7)}${String(Math.round(a.damage / res.length)).padStart(9)}${String(Math.round((a.damage / Math.max(1, a.gold)) * 100)).padStart(10)}${(a.kills / res.length).toFixed(1).padStart(7)}${pct(a.empty).padStart(7)}${pct(a.building).padStart(7)}`);
+        }
+      };
+      table((t) => t.type, 'tower');
+      table((t) => t.spec, 'specialisation');
+      const casts = sum('casts');
+      console.log(`  spell casts per run: ${Object.entries(casts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${(v / res.length).toFixed(1)}`).join(', ')}`);
+      const work = sum('runnerWork');
+      console.log(`  runner per run: level ${(work.level / res.length).toFixed(1)}, refills ${(work.refills / res.length).toFixed(0)}, upgrades built ${(work.upgradesBuilt / res.length).toFixed(1)}, bonks ${(work.bonks / res.length).toFixed(1)}, crates lost ${(work.cratesLost / res.length).toFixed(1)}`);
       console.log(`  perks (share of runs in the better half): ${perks.map(([k, v]) => `${k} ${Math.round((v.top / v.n) * 100)}% of ${v.n}`).join(', ')}`);
     }
   }

@@ -49,6 +49,8 @@ const SMART = {
   /** Roads opening within the horizon count this share; covered road length that halves a road's weight. */
   futureRoad: 0.8,
   spread: 30,
+  /** Tower types it may build (null = all); for testing one type at a time. */
+  allowTypes: null,
   /** Orders: send the runner to towers below this ammo share during a wave. */
   orderBelow: 0.2,
 };
@@ -286,6 +288,7 @@ export function createBot(name, overrides = null) {
           for (let x = 0; x < sim.grid.width; x++) if (sim.grid.isBuildable(x, y) && !towers.tooClose(x, y)) cells.push({ x, y });
         }
         for (const type of Object.keys(T)) {
+          if (profile.allowTypes && !profile.allowTypes.includes(type)) continue;
           const s = towerStats(T[type], 1, null, R);
           let best = null, bv = 0;
           for (const c of cells) {

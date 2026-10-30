@@ -149,3 +149,96 @@ Ný prófílar í `tools/bot.js`. Þeir velja turnategundir og reiti eins og Sma
 - **Arrow er nánast aldrei með** (1–2% hjá öllum nema gamla botninum) og **Brute veldur mestum skaðanum** á húsinu hjá öllum góðu aðferðunum. Þetta styður niðurstöðuna hér að ofan.
 
 Keyrt með: `STATS=1 node tools/simulate.js 30 basic,smart,wide,tall,cheapest,focus,even,topdps,slowfirst 60 oldroad`
+
+---
+
+# Turnar, sérhæfingar og perk hlauparans
+
+**Dagsetning:** 30. október 2026. Smart-botninn, nýr commander.
+
+## Turnar (Smart, öll kort, 100 leikir)
+
+| Turn | Á leik | Meðalstig | Skaði á leik | Skaði á 100 gull | Dráp á leik | Án skotfæra | Í smíði |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **Fire** | 0,99 | 3,6 | 199.369 | **30.648** | 157,5 | 0% | 2% |
+| Frost | 1,52 | 2,8 | 85.398 | 14.913 | 71,0 | 0% | 1% |
+| Rolling Stone | 1,00 | 1,9 | 25.359 | 8.193 | 62,3 | 0% | 0% |
+| Boulder | 0,21 | 2,4 | 4.115 | 4.367 | 4,3 | 1% | 1% |
+| Arrow | 0,88 | 2,5 | 7.244 | 2.742 | 15,5 | 0% | 1% |
+| Gale | 0,77 | 3,2 | 12.883 | 2.641 | 13,8 | 1% | 2% |
+
+**Skaði á 100 gull** segir hvað fæst fyrir gullið. Turnar sem lifa fram í seinni bylgjur fá hærri tölu, því HP óvina vex hratt.
+
+| Sérhæfing | Á leik | Meðalstig | Skaði á 100 gull | Dráp á leik |
+|---|---:|---:|---:|---:|
+| **Fire: Inferno** | 0,28 | 5,9 | **48.324** | 112,5 |
+| Frost: Blizzard | 0,28 | 5,4 | 28.215 | 42,5 |
+| Rolling Stone: Spiked Ball | 0,05 | 5,0 | 11.122 | 1,2 |
+| Gale: Tailwind | 0,15 | 7,2 | 3.503 | 8,7 |
+| Arrow: Volley | 0,15 | 5,8 | 2.888 | 1,3 |
+| Boulder: Quake | 0,04 | 5,0 | 1.567 | 0,2 |
+
+Hinar sérhæfingarnar (Napalm, Deep Freeze, Sniper, Armor Breaker, Hurricane, Twin Stones) voru aldrei valdar.
+
+## Ein turnategund í einu (Smart, The Old Road, 30 leikir hver)
+
+| Bara | Bylgja |
+|---|---:|
+| Rolling Stone | **7,0** |
+| Fire | 6,5 |
+| Frost | 5,5 |
+| Boulder | 5,5 |
+| Arrow | 5,0 |
+| Gale | 3,4 |
+| (Smart með alla turna) | 12,0 |
+
+Blandan skiptir öllu máli: engin ein tegund kemst nálægt 12. **Rolling Stone er sterkastur einn og sér**, en Smart notar hann lítið í blöndu.
+
+## Perk hlauparans: tilraun (Smart, The Old Road, 30 leikir á perk)
+
+Hvert perk var gefið strax í byrjun og borið saman við leiki án perks (grunnlína **11,97**). Það mælir raunveruleg áhrif. Talningin „algengt í góðum leikjum“ ruglast af því að langir leikir fá fleiri perk.
+
+Óvissan á hverja tölu er um ±0,9 bylgjur. Bara efstu perkin eru því marktæk.
+
+| Perk | Sjaldgæfni | Bylgja | Munur |
+|---|---|---:|---:|
+| **Pocket Watch of Ages** | mythical | 15,10 | **+3,13** |
+| **Golden Ammo** | epic | 14,03 | **+2,07** |
+| **Oiled Gears** | uncommon | 13,90 | **+1,93** |
+| Full Service | uncommon | 13,13 | +1,17 |
+| Stilts (galdur) | uncommon | 13,07 | +1,10 |
+| Perpetual Motion | mythical | 13,03 | +1,07 |
+| Crate on a Stick | epic | 12,90 | +0,93 |
+| Handyman | common | 12,83 | +0,87 |
+| Pocket Almanac | rare | 12,80 | +0,83 |
+| Strong Coffee, Nimble Fingers, Saucepan Helmet, Stompy Boots | | 12,5 | +0,5 |
+| Bottomless Pockets, Overclock, Recycler, Express Delivery, Tea Break, Cheerleader, Tinkerer | | 12,3–12,4 | +0,4 |
+| Twin Brother, Loud Whistle, Master Builder, Bigger Backpack | | 12,0 | ±0 |
+| Pep Talk (rank 2), Lucky Socks, Prefab Parts, Squeaky Sneakers, Banana Peel | | 11,4–11,9 | −0,1 til −0,5 |
+
+## Hlauparinn (Smart, öll kort, 100 leikir)
+
+- **Á leik:**
+  - stig 10,5;
+  - 81 áfylling;
+  - 9,6 uppfærslur smíðaðar;
+  - 9,7 sinnum felldur;
+  - 4,3 kassar týndir.
+- **Galdrar á leik:** Pep Talk 30, Lucky Socks 14, Stilts 10, Overclock 10, Bottomless 6, Banana Peel 4, Tea Break 4.
+
+## Það sem þetta segir um jafnvægið
+
+1. **Skotfærin skipta nánast engu máli.** Turnar eru tómir 0–1% af tímanum. Hlauparinn nær alltaf að fylla á, svo kjarninn í hlutverki hans er ekki undir pressu. Það mætti minnka magasín, hægja á honum eða láta hann bera færri kassa.
+2. **Fire er langbesti turninn.** Hann gerir tvöfaldan skaða á gull á við Frost og tífaldan á við Arrow og Gale. Inferno er sterkasta sérhæfingin. Fire þarf veikingu eða hinir styrkingu.
+3. **Arrow, Gale og Boulder eru veikir:** um 2.600–4.400 skaði á 100 gull.
+4. **Helmingur sérhæfinganna er aldrei valinn**, því Smart metur þær verri. Napalm, Sniper, Armor Breaker o.fl. þurfa endurskoðun.
+5. **Perk sem gera turnana sterkari vinna:** Golden Ammo, Oiled Gears og Pocket Watch.
+6. **Perk um hlauparann sjálfan skila nánast engu:** hraði, kassar, Twin Brother og Master Builder. Þetta passar við lið 1: hann er ekki flöskuhálsinn.
+7. **Twin Brother og Master Builder eru legendary en gera ekkert mælanlegt.** Þau þurfa styrkingu, eða leikurinn þarf að gera hlauparann mikilvægari.
+
+Keyrt með:
+```
+STATS=1 node tools/simulate.js 20 smart 60 all
+GRANTS=all node tools/simulate.js 30 smart 60 oldroad
+SWEEP='{"allowTypes":[["arrow"],["fire"],["frost"],["boulder"],["gale"],["roller"]]}' node tools/simulate.js 30 smart 60 oldroad
+```
