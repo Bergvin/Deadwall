@@ -28,7 +28,9 @@ export class Session {
     const C = sim.config;
     this.world = buildWorld(scene, assets, sim, shared.ground);
     this.ambience = new Ambience(scene, this.world, C.MAP_RULES, sim.paths.map((p) => p.points[0]));
-    this.overlay = new Overlay(scene, sim.grid, assets);
+    // The build grid only shows cells a tower can go on (free ground, not next to a tower).
+    this.overlay = new Overlay(scene, sim.grid, assets, (x, y) => sim.grid.isBuildable(x, y) && !sim.towers.tooClose(x, y));
+    for (const e of ['towerBuilt', 'towerRemoved']) sim.events.on(e, () => this.overlay.invalidateGrid());
     this.towerView = new TowerView(scene, assets, sim.towers, sim.events, C.TOWERS, C.TOWER_RULES);
     this.runnerView = new RunnerView(scene, assets, sim.runner, sim.events, C.RUNNER);
     // Spells keep their auto-cast choice between runs.

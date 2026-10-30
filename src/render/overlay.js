@@ -17,10 +17,12 @@ export class Overlay {
    * @param {THREE.Scene} scene
    * @param {import('../core/grid.js').Grid} grid
    * @param {import('./assets.js').AssetLibrary} assets
+   * @param {(x:number, y:number) => boolean} [placeable] cells a tower can go on right now
    */
-  constructor(scene, grid, assets) {
+  constructor(scene, grid, assets, placeable = null) {
     this.grid = grid;
     this.assets = assets;
+    this.placeable = placeable ?? ((x, y) => grid.inBounds(x, y) && grid.terrainAt(x, y) === TERRAIN.OPEN);
     this.root = new THREE.Group();
     this.root.name = 'overlay';
     scene.add(this.root);
@@ -47,11 +49,11 @@ export class Overlay {
     this.root.add(this.path);
   }
 
-  /** Grid lines over buildable cells only. */
+  /** Grid lines over the cells a tower can be placed on right now. */
   #makeGridLines() {
     const pts = [];
     const g = this.grid;
-    const open = (x, y) => g.inBounds(x, y) && g.terrainAt(x, y) === TERRAIN.OPEN;
+    const open = this.placeable;
     for (let y = 0; y < g.height; y++) {
       for (let x = 0; x < g.width; x++) {
         if (!open(x, y)) continue;
@@ -101,7 +103,26 @@ export class Overlay {
   }
 
   setGridVisible(v) {
+    if (v && this.gridDirty) this.refreshGrid();
     this.gridLines.visible = v;
+  }
+
+  /** Redraws the grid (towers built or sold change where the next one can go). */
+  refreshGrid() {
+    this.gridDirty = false;
+    const visible = this.gridLines.visible;
+    this.root.remove(this.gridLines);
+    this.gridLines.geometry.dispose();
+    this.gridLines.material.dispose();
+    this.gridLines = this.#makeGridLines();
+    this.gridLines.visible = visible;
+    this.root.add(this.gridLines);
+  }
+
+  /** Marks the grid for a redraw: now when it is showing, else when it is next shown. */
+  invalidateGrid() {
+    this.gridDirty = true;
+    if (this.gridLines.visible) this.refreshGrid();
   }
 
   /** Highlights a cell, or a size x size block whose top-left is (x, y). */
