@@ -6,6 +6,7 @@ import { Simulation } from '../core/simulation.js';
 import { CAMERA } from '../config/game.js';
 import { buildWorld } from '../render/worldView.js';
 import { Ambience } from '../render/ambience.js';
+import { PortalView } from '../render/portalView.js';
 import { Overlay } from '../render/overlay.js';
 import { TowerView } from '../render/towerView.js';
 import { RunnerView } from '../render/runnerView.js';
@@ -28,6 +29,7 @@ export class Session {
     const C = sim.config;
     this.world = buildWorld(scene, assets, sim, shared.ground);
     this.ambience = new Ambience(scene, this.world, C.MAP_RULES, sim.paths.map((p) => p.points[0]));
+    this.portalView = new PortalView(scene, assets, sim, C.MAP_RULES);
     // The build grid only shows cells a tower can go on (free ground, not next to a tower).
     this.overlay = new Overlay(scene, sim.grid, assets, (x, y) => sim.grid.isBuildable(x, y) && !sim.towers.tooClose(x, y));
     for (const e of ['towerBuilt', 'towerRemoved']) sim.events.on(e, () => this.overlay.invalidateGrid());
@@ -212,6 +214,7 @@ export class Session {
     this.towerView.update(realDt);
     this.runnerView.update(gameDt);
     this.ambience.update(realDt);
+    this.portalView.update(realDt);
     effects.update(realDt);
     floaters.update(realDt, cam.camera, canvas);
     const house = this.world.house;
@@ -241,6 +244,7 @@ export class Session {
     this.hud.dispose();
     this.overlay.dispose();
     this.ambience.dispose();
+    this.portalView.dispose();
     this.world.dispose();
     const s = this.shared;
     s.loop.paused = false;

@@ -99,4 +99,8 @@ export const MAP_RULES = {
   roadHalfWidth: 0.95,
   /** Zombies walk this far left/right of the centre line at most. */
   laneHalfWidth: 0.45,
+  /** Each road's portal stands this far along the road; the dead step out of it. */
+  portalS: 1.6,
+  /** Size of the portal's glowing gate (world units). */
+  portal: { width: 1.5, height: 2.1 },
 };

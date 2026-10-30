@@ -23,9 +23,9 @@ const LEAK_WINDUP = 0.6;
 export class ZombieSystem {
   #nextId = 1;
 
-  /** @param {{paths, house, economy, events, rng, types, elite?, physics, laneHalfWidth, speedMult?}} deps */
-  constructor({ paths, house, economy, events, rng, types, elite = null, physics, laneHalfWidth = 0.45, speedMult = 1 }) {
-    Object.assign(this, { paths, house, economy, events, rng, types, elite, physics, laneHalfWidth, speedMult });
+  /** @param {{paths, house, economy, events, rng, types, elite?, physics, laneHalfWidth, speedMult?, spawnS?}} deps */
+  constructor({ paths, house, economy, events, rng, types, elite = null, physics, laneHalfWidth = 0.45, speedMult = 1, spawnS = 0 }) {
+    Object.assign(this, { paths, house, economy, events, rng, types, elite, physics, laneHalfWidth, speedMult, spawnS });
     /** All zombies including dying ones (state DEAD) until their corpse time ends. */
     this.list = [];
     this.killCount = 0;
@@ -58,7 +58,7 @@ export class ZombieSystem {
    * @param {number} hpMultiplier wave scaling
    * @param {{elite?: boolean, rewardMult?: number, s?: number, lane?: number}} [opts]
    */
-  spawn(typeKey, pathId, hpMultiplier = 1, { elite = false, rewardMult = 1, s = 0, lane } = {}) {
+  spawn(typeKey, pathId, hpMultiplier = 1, { elite = false, rewardMult = 1, s = this.spawnS, lane } = {}) {
     const t = this.types[typeKey];
     const path = this.paths[pathId] ?? this.paths[0];
     const e = elite && this.elite ? this.elite : null;

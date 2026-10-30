@@ -43,6 +43,8 @@ export class Simulation {
       paths, house: this.house, economy: this.economy, events: this.events, rng: this.rng,
       types: c.ZOMBIES, elite: c.ELITE, physics: c.PHYSICS, laneHalfWidth: c.MAP_RULES.laneHalfWidth,
       speedMult: mods.enemySpeedMult ?? 1,
+      // New zombies step out of the road's portal.
+      spawnS: c.MAP_RULES.portalS ?? 0,
     });
     this.zones = new ZoneSystem({ zombies: this.zombies, events: this.events });
     this.combat = new CombatSystem({ zombies: this.zombies, zones: this.zones, events: this.events, rng: this.rng });

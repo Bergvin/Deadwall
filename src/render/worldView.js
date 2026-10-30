@@ -94,7 +94,7 @@ export function buildWorld(scene, assets, sim, ground) {
     const x = Math.min(grid.width - 0.4, Math.max(0.4, a.x)), z = Math.min(grid.height - 0.4, Math.max(0.4, a.z));
     const d = p.segs[0];
     for (const side of [-1, 1]) {
-      const gx = x - d.dz * side * 1.5, gz = z + d.dx * side * 1.5;
+      const gx = x - d.dz * side * 2.2, gz = z + d.dx * side * 2.2;
       place('gravestone', gx, gz, Math.atan2(d.dx, d.dz) + side * 0.3, 0, 0.9);
     }
     const light = new THREE.PointLight(0xc03020, 5, 6, 1.6);
