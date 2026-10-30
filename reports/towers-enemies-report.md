@@ -182,3 +182,43 @@ COMMANDER=strong node tools/simulate.js 8 basic,smart,oldtowers,newtowers,focus,
 GRANTS=all node tools/simulate.js 20 oldtowers 60 oldroad
 SWEEP='{"lineHits":[0.5,0.8,1.2],"sameTypeDecay":[0.5,0.8]}' node tools/simulate.js 20 smart 60 all
 ```
+
+---
+
+# Jafnvægisbreytingar (eftir skýrsluna)
+
+| Breyting | Áður | Núna |
+|---|---|---|
+| Arcane: skaði / verð | 17 / 150 gull | **25 / 130 gull** |
+| Arcane Seer: skaðaauki | +20% | **+40%** |
+| Tesla: skaði / tap á hverju hoppi | 13 / 20% | **19 / 10%** |
+| Alchemist: eitur | 9/s | **13/s** |
+| Watchtower: verð | 110 | **80** |
+| Ironclad: HP | 200 | **170** |
+| Nýir óvinir á bylgju | Ironclad 1+0,4, Ghost 2+0,5, Wraith 2+0,5, Rotter 1+0,5 | **Ironclad 1+0,3, Ghost 1+0,4, Wraith 1+0,4, Rotter 1+0,4** |
+| Botninn: Rolling Stone og Ballista | eitt sameiginlegt mat | **sitt matið hvort** (`rollerHits` 2,5, `lineHits` 0,8) |
+
+Prófað en hætt við: að fækka Walkers (3 → 2,5 á bylgju) gerði leikinn **erfiðari**, ekki léttari. Walkers eru helsta gulltekjan í byrjun.
+
+## Matchup eftir breytingarnar
+
+| Turn (stig 1) | Walker | Runner | Brute | Ghost | Ironclad | Rotter |
+|---|---:|---:|---:|---:|---:|---:|
+| Fire | 96% | 90% | 36% | 78% | 64% | 52% |
+| **Tesla Coil** | 100% (var 90%) | 100% (var 70%) | 36% (var 21%) | **98%** (var 63%) | 73% (var 36%) | 66% (var 41%) |
+| **Alchemist** | 100% (var 88%) | 92% | 38% (var 28%) | 83% (var 67%) | 55% (var 37%) | 59% (var 43%) |
+| **Arcane** | 76% (var 57%) | 85% (var 79%) | 18% (var 13%) | 55% (var 37%) | 36% (var 21%) | 33% (var 23%) |
+
+Á stigi 8 er **Alchemist Plague Cask** orðin jafngóð Fire Inferno: 94% á Ghost, 80% á Ironclad og 76% á Rotter. Tesla Overload er nálægt.
+
+## Aðferðir eftir breytingarnar (meðaltal allra korta)
+
+| Aðferð | Nýr commander | Mið-commander | Sterkur commander |
+|---|---:|---:|---:|
+| Smart (allir 11 turnar) | 6,2 (var 6,4) | **17,2** (var 14,6) | 30,3 (var 30,8) |
+| Bara gömlu turnarnir | **7,4** (var 7,3) | 16,8 (var 16,6) | **34,9** (var 34,6) |
+| Bara nýju turnarnir | 5,5 (var 5,2) | 13,8 (var 12,0) | 30,0 (var 28,8) |
+
+- **Með mið-commander er blandan nú best.** Smart með öllum turnum vinnur „gömlu turnana“, og nýju turnarnir einir eru miklu nær.
+- Með nýjum og sterkum commander velur Smart enn of illa úr 11 turnum. Gömlu turnarnir einir eru betri þar, en það er dómgreind botnsins frekar en turnarnir sjálfir, því nýju turnarnir standast núna samanburð í matchup.
+- Erfiðleikinn fyrir mið-commander: The Old Road ~23, Crossroads ~16, River Bend ~20, The Hollow ~12, The Long March ~13.

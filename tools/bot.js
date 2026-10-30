@@ -50,8 +50,9 @@ const SMART = {
   /** Roads opening within the horizon count this share; covered road length that halves a road's weight. */
   futureRoad: 0.8,
   spread: 30,
-  /** Enemies a line attack (rolling stone, ballista bolt) hits on average. */
+  /** Enemies a ballista bolt / a rolling stone hits on average. */
   lineHits: 0.8,
+  rollerHits: 2.5,
   /** How much revealing stealth is worth (share of the defence per share of stealth HP). */
   revealWeight: 1.5,
   /** Tower types it may build (null = all); for testing one type at a time. */
@@ -193,8 +194,7 @@ function effDps(s, mix, sim, p, type, ctx = { reveal: false }) {
   mitig /= Math.max(1, mix.total);
   // Several victims per shot: extra targets, area, lines (rolling stone, ballista), lightning
   // jumps; never more than the pack.
-  const line = type === 'roller' || s.aimed;
-  const hits = line ? Math.min(4, p.lineHits * (s.balls ?? 1))
+  const hits = type === 'roller' ? Math.min(4, p.rollerHits * (s.balls ?? 1)) : s.aimed ? Math.min(4, p.lineHits)
     : s.chain ? Math.min(4, 1 + s.chain.jumps * s.chain.falloff * 0.6)
       : Math.min(4, s.targets + (s.aoe ? s.aoe * p.aoeWeight * 2 : 0));
   let dps = (s.damage / s.interval) * hits * mitig;
