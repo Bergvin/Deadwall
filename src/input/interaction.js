@@ -8,6 +8,7 @@ import * as THREE from 'three';
 export const REJECT_TEXT = {
   insufficient_gold: 'Not enough gold',
   blocked: 'Towers go on free ground beside the road',
+  too_close: 'Towers need a free cell between them',
   no_slots: 'No free tower slot (more open as you survive longer)',
   max_level: 'Already at maximum level',
   choose_spec: 'Choose a specialisation first',

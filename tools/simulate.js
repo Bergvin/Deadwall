@@ -68,7 +68,7 @@ function bestCell(sim, type) {
   let best = null, bestScore = -1;
   for (let y = 0; y < sim.grid.height; y++) {
     for (let x = 0; x < sim.grid.width; x++) {
-      if (!sim.grid.isBuildable(x, y)) continue;
+      if (!sim.grid.isBuildable(x, y) || sim.towers.tooClose(x, y)) continue;
       let score = 0;
       // Every road the map will use, already covered roads count less (spread the cover).
       for (const p of sim.paths) score += Math.sqrt(coverage(p, x + 0.5, y + 0.5, range, 0.5) / (1 + (covered.get(p.id) ?? 0)));

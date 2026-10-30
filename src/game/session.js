@@ -32,6 +32,7 @@ export class Session {
     this.towerView = new TowerView(scene, assets, sim.towers, sim.events, C.TOWERS, C.TOWER_RULES);
     this.runnerView = new RunnerView(scene, assets, sim.runner, sim.events, C.RUNNER);
     // Spells keep their auto-cast choice between runs.
+    sim.runner.setAutoCastAll(!!shared.settings?.autoCastAll);
     for (const [id, on] of Object.entries(shared.settings?.autoCast ?? {})) sim.runner.setAutoCast(id, on);
     // Start with the camera on the house.
     cam.target.set(sim.house.x, 0, Math.min(C.MAP_RULES.height - 6, sim.house.z - 4));
@@ -44,15 +45,23 @@ export class Session {
       order: (id) => sim.runner.orderRefill(id),
       cast: (n) => this.input.castSlot(n),
       toggleAutoCast: (id) => {
-        const on = !sim.runner.autoCast[id];
+        const on = !sim.runner.isAutoCast(id);
         sim.runner.setAutoCast(id, on);
         shared.setSetting('autoCast', { ...shared.settings.autoCast, [id]: on });
         this.hud.toast(`${C.SPELLS[id].name}: auto-cast ${on ? 'on' : 'off'}`);
       },
-      startWave: () => sim.waves.startNext(),
+      toggleAutoCastAll: () => {
+        const on = !sim.runner.autoCastAll;
+        sim.runner.setAutoCastAll(on);
+        shared.setSetting('autoCast', {});
+        shared.setSetting('autoCastAll', on);
+        this.hud.toast(`Auto-cast ${on ? 'on' : 'off'} for every spell`);
+      },
+      // Starting or calling a wave also ends a pause (the player wants to play).
+      startWave: () => { if (sim.waves.startNext()) shared.resume(); },
       togglePause: () => shared.togglePause(),
       /** Stops/starts game time without the pause menu (the perk picker uses it). */
-      holdTime: (on) => { loop.paused = on; },
+      holdTime: (on) => shared.setHold(on),
       setSpeed: (s) => { loop.speed = s; },
       isPaused: () => loop.paused,
       getSpeed: () => loop.speed,
@@ -66,7 +75,7 @@ export class Session {
     addEventListener('keydown', (e) => {
       if (e.repeat || e.target instanceof HTMLInputElement) return;
       if (e.code === 'Space') { e.preventDefault(); shared.togglePause(); }
-      if (e.code === 'Enter' || e.code === 'NumpadEnter') sim.waves.startNext();
+      if (e.code === 'Enter' || e.code === 'NumpadEnter') this.hud.actions.startWave();
     }, { signal: this.abort.signal });
     this.#wireFeedback();
     this.hud.toast(`${sim.runner.name} ${C.RUNNER.title} reporting for duty! Build towers beside the road.`, 'good');

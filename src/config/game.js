@@ -68,7 +68,7 @@ export const PHYSICS = {
 };
 
 /** Game speed buttons in the top bar (multipliers of the simulation clock). */
-export const GAME_SPEEDS = [1, 2, 3];
+export const GAME_SPEEDS = [1, 3, 5];
 
 export const CAMERA = {
   pitchDeg: 55,

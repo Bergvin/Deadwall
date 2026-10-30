@@ -282,3 +282,35 @@ test('fresh commander on the first map: an idle player loses early, towers hold 
   sim.run(60 * 6);
   assert.ok(sim.summary().wave > idle.summary().wave);
 });
+
+test('towers keep a free cell between them', () => {
+  const sim = fresh();
+  const c = besideRoad(sim, 8);
+  assert.ok(sim.towers.build('arrow', c.x, c.y));
+  const d = CFG.TOWER_RULES.spacing;
+  for (let dy = -d; dy <= d; dy++) {
+    for (let dx = -d; dx <= d; dx++) {
+      if (!dx && !dy) continue;
+      if (!sim.grid.isBuildable(c.x + dx, c.y + dy)) continue;
+      assert.equal(sim.towers.canBuild('arrow', c.x + dx, c.y + dy).reason, 'too_close');
+    }
+  }
+  // Just outside the gap is fine (when that ground is free).
+  const far = [[d + 1, 0], [-(d + 1), 0], [0, d + 1], [0, -(d + 1)]].find(([dx, dy]) => sim.grid.isBuildable(c.x + dx, c.y + dy));
+  if (far) assert.ok(sim.towers.canBuild('arrow', c.x + far[0], c.y + far[1]).ok);
+});
+
+test('runner auto-cast: the all-spells switch covers spells learned later; right-click overrides one', () => {
+  const sim = fresh();
+  const r = sim.runner;
+  assert.equal(r.isAutoCast('pepTalk'), false);
+  r.setAutoCastAll(true);
+  assert.equal(r.isAutoCast('pepTalk'), true);
+  assert.equal(r.isAutoCast('someLaterSpell'), true, 'spells learned later auto-cast too');
+  r.setAutoCast('pepTalk', false);
+  assert.equal(r.isAutoCast('pepTalk'), false, 'a single spell can be switched off');
+  r.setAutoCastAll(false);
+  assert.equal(r.isAutoCast('pepTalk'), false);
+  r.setAutoCastAll(true);
+  assert.equal(r.isAutoCast('pepTalk'), true, 'the switch clears single-spell choices');
+});

@@ -18,8 +18,9 @@ const DEFAULTS = () => ({
   maps: {},
   settings: {
     muted: false, volume: 0.7, shadows: true, showRanges: true,
-    /** Spells that auto-cast (spell id -> on). */
+    /** Spells that auto-cast (spell id -> on); autoCastAll covers every spell without a choice. */
     autoCast: {},
+    autoCastAll: false,
   },
   commander: commanderDefaults(),
 });
@@ -91,6 +92,7 @@ export function sanitize(raw) {
       shadows: bool(raw.settings?.shadows, d.settings.shadows),
       showRanges: bool(raw.settings?.showRanges, d.settings.showRanges),
       autoCast,
+      autoCastAll: bool(raw.settings?.autoCastAll, d.settings.autoCastAll),
     },
     commander: sanitizeCommander(raw.commander),
   };

@@ -162,7 +162,15 @@ export class Hud {
     this.pickBtn = h('button', 'btn pickbtn', '');
     this.pickBtn.addEventListener('click', () => this.picker.open());
     this.spellRow = h('div', 'spells');
-    bar.append(head, this.spellRow, this.pickBtn);
+    this.autoAllBtn = h('button', 'btn autoall', 'AUTO');
+    this.autoAllBtn.title = 'Auto-cast every spell on/off (right-click a spell to choose for that spell only)';
+    this.autoAllBtn.addEventListener('click', () => this.actions.toggleAutoCastAll());
+    bar.append(head, this.spellRow, this.autoAllBtn, this.pickBtn);
+    // Waiting perk picks also get a big button in the middle of the screen between waves.
+    this.pickCallout = h('button', 'pickcallout');
+    this.pickCallout.hidden = true;
+    this.pickCallout.addEventListener('click', () => this.picker.open());
+    this.el.append(this.pickCallout);
     this.el.append(bar);
     this.runnerBar = bar;
     this.#buildSpells();
@@ -204,7 +212,7 @@ export class Hud {
       el.style.setProperty('--cd', (cd / info.cooldown).toFixed(3));
       const t = cd > 0 ? Math.ceil(cd) : '';
       if (el.querySelector('.cd').textContent !== String(t)) el.querySelector('.cd').textContent = t;
-      el.classList.toggle('autoon', !!r.autoCast[id]);
+      el.classList.toggle('autoon', r.isAutoCast(id));
     }
     const picks = r.pendingPicks;
     const prep = this.sim.waves.phase === PHASE.PREP;
@@ -213,6 +221,13 @@ export class Hud {
     if (this.pickBtn.textContent !== label) this.pickBtn.textContent = label;
     this.pickBtn.disabled = !prep;
     this.pickBtn.classList.toggle('glow', prep && picks > 0);
+    const call = prep && picks > 0 && this.picker.el.hidden;
+    this.pickCallout.hidden = !call;
+    const callHtml = `★ Choose ${picks > 1 ? `${picks} perks` : 'a perk'}<small>${r.name} reached level ${r.level}</small>`;
+    if (call && this.pickCallout.innerHTML !== callHtml) this.pickCallout.innerHTML = callHtml;
+    const allOn = r.autoCastAll;
+    this.autoAllBtn.classList.toggle('on', allOn);
+    this.autoAllBtn.textContent = allOn ? 'AUTO ✓' : 'AUTO';
   }
 
   setMode(mode) {

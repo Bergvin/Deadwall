@@ -33,6 +33,7 @@ export class RunnerSystem {
     this.cooldowns = {};
     /** spell id -> auto-cast on/off */
     this.autoCast = {};
+    this.autoCastAll = false;
     this.orders = [];
     this.units = [];
     this.buildAllowed = () => true;
@@ -274,6 +275,17 @@ export class RunnerSystem {
     this.autoCast[id] = !!on;
   }
 
+  /** Whether a spell auto-casts: its own choice, else the all-spells switch. */
+  isAutoCast(id) {
+    return this.autoCast[id] ?? this.autoCastAll;
+  }
+
+  /** Auto-cast every spell (including ones learned later); clears per-spell choices. */
+  setAutoCastAll(on) {
+    this.autoCastAll = !!on;
+    this.autoCast = {};
+  }
+
   // --- supply orders -----------------------------------------------------------------
 
   /** Sends a runner to this tower next (player order). */
@@ -375,7 +387,7 @@ export class RunnerSystem {
     if (this.autoTimer <= 0) {
       this.autoTimer = 0.4;
       for (const id of Object.keys(this.spells)) {
-        if (this.autoCast[id] && this.canCast(id) && this.wantsCast(id)) this.cast(id);
+        if (this.isAutoCast(id) && this.canCast(id) && this.wantsCast(id)) this.cast(id);
       }
     }
   }

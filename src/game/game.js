@@ -90,7 +90,7 @@ export class Game {
   chooseMap() {
     this.#endSession();
     this.screens.hideGameOver();
-    this.screens.setPaused(false);
+    this.#resetPause();
     this.state = STATE.MENU;
     this.screens.showMapSelect(MAPS, this.save, (m) => isMapUnlocked(this.save, m));
   }
@@ -100,15 +100,15 @@ export class Game {
     this.screens.hideMenu();
     this.screens.hideGameOver();
     this.screens.hideCommander();
-    this.loop.paused = false;
     this.loop.speed = 1;
-    this.screens.setPaused(false);
+    this.#resetPause();
     this.lastMap = mapId;
     this.session = new Session({
       scene: this.scene, canvas: this.renderer.domElement, cam: this.cam, assets: this.assets, ground: this.ground,
       zombieView: this.zombieView, projectileView: this.projectileView,
       effects: this.effects, fx: this.fx, bars: this.bars, sfx: this.sfx, floaters: this.floaters,
       loop: this.loop, seed, mapId, togglePause: () => this.togglePause(),
+      resume: () => this.resume(), setHold: (on) => this.setHold(on),
       // Every run plays with the Commander's perks, skills and equipped artifacts.
       config: runConfig(CFG, this.save.commander),
       settings: this.save.settings, setSetting: (k, v) => this.setSetting(k, v),
@@ -120,8 +120,7 @@ export class Game {
   toMenu() {
     this.#endSession();
     this.state = STATE.MENU;
-    this.loop.paused = false;
-    this.screens.setPaused(false);
+    this.#resetPause();
     this.screens.hideGameOver();
     this.screens.hideCommander();
     this.screens.showMenu(this.save);
@@ -214,10 +213,36 @@ export class Game {
     }
   }
 
+  // Game time stops when the player pauses (the Paused panel) or while an overlay holds it
+  // (the perk picker). The two are kept apart so releasing a hold never unpauses the player
+  // and the panel always matches the player's pause.
   togglePause() {
     if (this.state !== STATE.PLAYING) return;
-    this.loop.paused = !this.loop.paused;
-    this.screens.setPaused(this.loop.paused);
+    this.userPaused = !this.userPaused;
+    this.#applyPause();
+  }
+
+  /** Ends the player's pause (starting or calling a wave does this). */
+  resume() {
+    if (!this.userPaused) return;
+    this.userPaused = false;
+    this.#applyPause();
+  }
+
+  setHold(on) {
+    this.held = on;
+    this.#applyPause();
+  }
+
+  #applyPause() {
+    this.loop.paused = !!(this.userPaused || this.held);
+    this.screens.setPaused(!!this.userPaused);
+  }
+
+  #resetPause() {
+    this.userPaused = false;
+    this.held = false;
+    this.#applyPause();
   }
 
   frame(realDt) {

@@ -86,9 +86,19 @@ export class TowerSystem {
   }
 
   /** @returns {{ok: true} | {ok: false, reason: string}} */
+  /** True when another tower stands within `spacing` cells (towers keep a gap between them). */
+  tooClose(x, y) {
+    const d = this.rules.spacing ?? 0;
+    for (let dy = -d; dy <= d; dy++) {
+      for (let dx = -d; dx <= d; dx++) if ((dx || dy) && this.grid.towerAt(x + dx, y + dy)) return true;
+    }
+    return false;
+  }
+
   canBuild(typeKey, x, y) {
     if (!this.types[typeKey]) return { ok: false, reason: 'unknown_type' };
     if (!this.grid.isBuildable(x, y)) return { ok: false, reason: 'blocked' };
+    if (this.tooClose(x, y)) return { ok: false, reason: 'too_close' };
     if (this.count >= this.slots) return { ok: false, reason: 'no_slots' };
     if (!this.economy.canAfford(this.costOf(typeKey))) return { ok: false, reason: 'insufficient_gold' };
     return { ok: true };

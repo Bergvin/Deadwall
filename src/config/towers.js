@@ -88,6 +88,8 @@ export const TOWERS = {
 
 export const TOWER_RULES = {
   maxLevel: 10,
+  /** Free cells required between two towers (1 = no tower on the 8 cells around another). */
+  spacing: 1,
   /** Upgrading to this level asks for one of the tower's two specialisations. */
   specLevel: 5,
   /** Upgrade to level L+1 costs base cost x upgradeBase x upgradeGrowth^(L-1). */
