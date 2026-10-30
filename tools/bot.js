@@ -51,7 +51,7 @@ const SMART = {
   futureRoad: 0.8,
   spread: 30,
   /** Enemies a line attack (rolling stone, ballista bolt) hits on average. */
-  lineHits: 2.5,
+  lineHits: 0.8,
   /** How much revealing stealth is worth (share of the defence per share of stealth HP). */
   revealWeight: 1.5,
   /** Tower types it may build (null = all); for testing one type at a time. */
@@ -76,6 +76,11 @@ export const BOT_PROFILES = {
   even: { ...SMART, name: 'Even levels', description: 'Fills slots, then upgrades the lowest-level tower (all level up together).', policy: 'even' },
   topdps: { ...SMART, name: 'Best tower first', description: 'Fills slots, then upgrades the tower doing the most damage.', policy: 'topdps' },
   slowfirst: { ...SMART, name: 'Slow first', description: 'Smart, but the first two towers are Frost and Gale.', supportFirst: ['frost', 'gale'] },
+  // Tower pools and foresight (smart's judgement, limited choices):
+  oldtowers: { ...SMART, name: 'Old towers only', description: 'Smart with the first six tower types only.', allowTypes: ['arrow', 'fire', 'frost', 'boulder', 'gale', 'roller'] },
+  newtowers: { ...SMART, name: 'New towers only', description: 'Smart with the five new tower types only.', allowTypes: ['watchtower', 'arcane', 'alchemist', 'tesla', 'ballista'] },
+  lookahead: { ...SMART, name: 'Looks further ahead', description: 'Smart, planning for the next 6 waves instead of 3.', horizon: 6 },
+  watchfirst: { ...SMART, name: 'Watchtower early', description: 'Smart, but builds a Watchtower as its third tower.', supportFirst: null, earlyWatch: true },
 };
 // Single tower type strategies: the basic player with one type.
 for (const t of ['arrow', 'fire', 'frost', 'boulder', 'gale', 'roller']) {
@@ -359,6 +364,13 @@ export function createBot(name, overrides = null) {
         // The tower is out of action while the runner builds it.
         const downtime = now * R.buildTime(t.level + 1) / 60;
         options.push({ kind: 'upgrade', tower: t, spec, cost: towers.upgradeCost(t.id), now, gain: (next - now - downtime) * profile.upgradeWeight });
+      }
+      // Watchtower early: the third tower is a Watchtower.
+      if (profile.earlyWatch && towers.count === 2 && !same.watchtower) {
+        const o = options.find((x) => x.kind === 'build' && x.type === 'watchtower');
+        if (!o || sim.economy.gold < o.cost) break;
+        if (!apply(sim, o)) break;
+        continue;
       }
       // Slow first: the first support towers come before anything else.
       const support = profile.supportFirst?.find((type) => !same[type]);
