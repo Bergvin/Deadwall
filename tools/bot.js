@@ -62,6 +62,13 @@ export const BOT_PROFILES = {
   tall: { ...SMART, name: 'Smart tall', description: 'Smart, prefers upgrades over new towers.', upgradeWeight: 1.6 },
   'smart-noorders': { ...SMART, name: 'Smart without orders', description: 'Smart, but never orders the runner.', orders: false },
   'smart-nospells': { ...SMART, name: 'Smart without spells', description: 'Smart, but never casts a spell.', spells: false },
+  // Fixed upgrade strategies (smart picks tower types and cells; all fill free slots first,
+  // then save for the one upgrade the strategy wants):
+  cheapest: { ...SMART, name: 'Cheapest first', description: 'Fills slots, then always the cheapest upgrade.', policy: 'cheapest' },
+  focus: { ...SMART, name: 'One to max', description: 'Fills slots, then takes one tower all the way to level 10 before the next.', policy: 'focus' },
+  even: { ...SMART, name: 'Even levels', description: 'Fills slots, then upgrades the lowest-level tower (all level up together).', policy: 'even' },
+  topdps: { ...SMART, name: 'Best tower first', description: 'Fills slots, then upgrades the tower doing the most damage.', policy: 'topdps' },
+  slowfirst: { ...SMART, name: 'Slow first', description: 'Smart, but the first two towers are Frost and Gale.', supportFirst: ['frost', 'gale'] },
 };
 // Single tower type strategies: the basic player with one type.
 for (const t of ['arrow', 'fire', 'frost', 'boulder', 'gale', 'roller']) {
@@ -297,7 +304,31 @@ export function createBot(name, overrides = null) {
         const next = value(sim, t.type, towerStats(T[t.type], t.level + 1, t.spec ?? spec, R), t.cx, t.cz, mix, team, (same[t.type] ?? 1) - 1);
         // The tower is out of action while the runner builds it.
         const downtime = now * R.buildTime(t.level + 1) / 60;
-        options.push({ kind: 'upgrade', tower: t, spec, cost: towers.upgradeCost(t.id), gain: (next - now - downtime) * profile.upgradeWeight });
+        options.push({ kind: 'upgrade', tower: t, spec, cost: towers.upgradeCost(t.id), now, gain: (next - now - downtime) * profile.upgradeWeight });
+      }
+      // Slow first: the first support towers come before anything else.
+      const support = profile.supportFirst?.find((type) => !same[type]);
+      if (support && towers.count < profile.supportFirst.length) {
+        const o = options.find((x) => x.kind === 'build' && x.type === support);
+        if (!o || sim.economy.gold < o.cost) break;
+        if (!apply(sim, o)) break;
+        continue;
+      }
+      // Fixed strategies: fill slots with the best-value tower, then one chosen upgrade.
+      if (profile.policy) {
+        const builds = options.filter((o) => o.kind === 'build').sort((a, b) => b.gain / b.cost - a.gain / a.cost);
+        const ups = options.filter((o) => o.kind === 'upgrade');
+        const level = (o) => o.tower.level;
+        const order = {
+          cheapest: (a, b) => a.cost - b.cost,
+          focus: (a, b) => level(b) - level(a) || b.now - a.now,
+          even: (a, b) => level(a) - level(b) || a.cost - b.cost,
+          topdps: (a, b) => b.now - a.now,
+        }[profile.policy];
+        const target = builds[0] ?? ups.sort(order)[0];
+        if (!target || sim.economy.gold < target.cost) break;
+        if (!apply(sim, target)) break;
+        continue;
       }
       const usable = options.filter((o) => o.gain > 0 && o.cost > 0);
       if (!usable.length) break;

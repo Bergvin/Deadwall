@@ -118,3 +118,34 @@ node tools/trace.js hollow smart                         # einn leikur bylgju fy
 
 - **Monte Carlo-botn ("Hard")**, eins og í Astromage: í hverjum undirbúningsfasa prófar hann nokkrar áætlanir (byggja, uppfæra, spara) með því að spila næstu bylgjur áfram, og velur þá bestu. Hermunin er ákveðin fyrir hvert fræ, svo það er hægt.
 - Nota Smart til að stilla jafnvægi: Arrow, Fire og Long March-bossann.
+
+---
+
+# Uppfærsluaðferðir (The Old Road, nýr commander, 30 leikir hver)
+
+Ný prófílar í `tools/bot.js`. Þeir velja turnategundir og reiti eins og Smart, en fylla öll turnapláss fyrst og fylgja svo fastri uppfærslureglu:
+
+| Aðferð | Prófíll | Meðaltal | Miðgildi | Bil |
+|---|---|---:|---:|---|
+| Smart (mest skaði á gull) | `smart` | **12,0** | 11 | 5–19 |
+| Smart, hallast að nýjum turnum | `wide` | **12,0** | 10 | 5–20 |
+| Smart, hallast að uppfærslum | `tall` | 11,5 | 11 | 5–16 |
+| Einn turn í hámark fyrst | `focus` | 11,0 | 10 | 6–20 |
+| Uppfæra turninn sem gerir mestan skaða | `topdps` | 11,0 | 10 | 6–20 |
+| Ódýrasta uppfærslan fyrst | `cheapest` | 8,9 | 9 | 6–11 |
+| Allir turnar jafnt | `even` | 8,7 | 9 | 6–10 |
+| Frost + Gale fyrst | `slowfirst` | 5,9 | 5,5 | 5–10 |
+| Gamli botninn (föst röð, ódýrast fyrst) | `basic` | 5,8 | 6 | 5–9 |
+
+**Hvað þetta segir:**
+- **Að einbeita sér borgar sig.** Smart og „einn í hámark“ ná báðar um 11–12 bylgjum. Að dreifa uppfærslum jafnt eða taka alltaf ódýrustu skilar bara um 9: turnarnir ná aldrei stigi 5 (sérhæfingu), og stóru stökkin koma ekki.
+- **„Einn í hámark“ og „mestan skaða fyrst“ urðu eins** (sama tala, sömu leikir), því sterkasti turninn er alltaf sá sem er hæst uppfærður.
+- **„Einn í hámark“ er mjög sveiflukennd:** 6 til 20. Hún vinnur stórt þegar fyrsti turninn er réttur, en tapar snemma annars. Smart er stöðugri.
+- **Að byrja á Frost og Gale er slæmt** (5,9). Hægingin hjálpar ekki fyrr en eitthvað drepur.
+- **Sigurturninn fer eftir aðferðinni:**
+  - Smart velur Fire Inferno (61% skaðans) með Frost Blizzard (29%).
+  - Einn í hámark endar oft með Frost Blizzard (57%) og Boulder Quake (39%).
+  - Fleiri en ein leið virkar, sem er gott.
+- **Arrow er nánast aldrei með** (1–2% hjá öllum nema gamla botninum) og **Brute veldur mestum skaðanum** á húsinu hjá öllum góðu aðferðunum. Þetta styður niðurstöðuna hér að ofan.
+
+Keyrt með: `STATS=1 node tools/simulate.js 30 basic,smart,wide,tall,cheapest,focus,even,topdps,slowfirst 60 oldroad`
