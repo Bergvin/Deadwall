@@ -20,8 +20,18 @@ export function createBakedHorde(root, clips, maxCount, opts = {}) {
   root.rotation.set(0, 0, 0);
   root.updateMatrixWorld(true);
 
+  // Skinned parts, plus rigid parts that ride a bone (helmets, hats, hoods) or, in models
+  // without skinning (Kenney characters), every part: the clips move their nodes, so they
+  // are baked from their world matrix.
   const parts = [];
   root.traverse((o) => { if (o.isSkinnedMesh && o.visible) parts.push(o); });
+  const unskinned = !parts.length;
+  root.traverse((o) => {
+    if (!o.isMesh || o.isSkinnedMesh || !o.visible) return;
+    let p = o.parent;
+    while (p && !p.isBone) p = p.parent;
+    if (p || unskinned) parts.push(o);
+  });
 
   const clipInfo = {};
   let totalFrames = 0;
@@ -80,13 +90,15 @@ function bakePart(root, skinned, clips, clipInfo, totalFrames, frameAttr, maxCou
   const nrmData = new Float32Array(TEX_W * texH * 4);
 
   const mixer = new THREE.AnimationMixer(root);
-  const skeleton = skinned.skeleton;
-  const boneCount = skeleton.bones.length;
+  const rigid = !skinned.isSkinnedMesh;
+  const skeleton = rigid ? null : skinned.skeleton;
+  const boneCount = rigid ? 0 : skeleton.bones.length;
   const boneMats = Array.from({ length: boneCount }, () => new THREE.Matrix4());
   const pos = geom.attributes.position;
   const nrm = geom.attributes.normal;
   const sIdx = geom.attributes.skinIndex;
   const sWgt = geom.attributes.skinWeight;
+  const rigidNormal = new THREE.Matrix3();
   const v = new THREE.Vector3();
   const n = new THREE.Vector3();
   const accP = new THREE.Vector3();
@@ -101,6 +113,19 @@ function bakePart(root, skinned, clips, clipInfo, totalFrames, frameAttr, maxCou
     for (let f = 0; f < info.frames; f++) {
       mixer.setTime((f / info.frames) * clip.duration);
       root.updateMatrixWorld(true);
+      if (rigid) {
+        // The root sits at the origin unrotated, so world space is the baked space.
+        rigidNormal.getNormalMatrix(skinned.matrixWorld);
+        const base = (info.start + f) * vCount;
+        for (let i = 0; i < vCount; i++) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(skinned.matrixWorld);
+          n.fromBufferAttribute(nrm, i).applyMatrix3(rigidNormal).normalize();
+          const o = (base + i) * 4;
+          posData[o] = v.x; posData[o + 1] = v.y; posData[o + 2] = v.z;
+          nrmData[o] = n.x; nrmData[o + 1] = n.y; nrmData[o + 2] = n.z;
+        }
+        continue;
+      }
       skeleton.update();
       // Per-bone matrix that maps a bind-pose vertex straight into world space. The root sits
       // at the origin unrotated, so this bakes in the root's scale and nothing else:
@@ -171,7 +196,11 @@ function bakePart(root, skinned, clips, clipInfo, totalFrames, frameAttr, maxCou
   };
 
   const src = Array.isArray(skinned.material) ? skinned.material[0] : skinned.material;
-  const material = patch(new THREE.MeshLambertMaterial({ map: src.map, color: src.color }), true);
+  // Lambert with base colour and glow (glowing eyes); normal/roughness maps are dropped.
+  const material = patch(new THREE.MeshLambertMaterial({
+    map: src.map, color: src.color,
+    emissive: src.emissive ?? new THREE.Color(0), emissiveMap: src.emissiveMap ?? null, emissiveIntensity: src.emissiveIntensity ?? 1,
+  }), true);
   const depthMaterial = patch(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }), false);
 
   const g = new THREE.BufferGeometry();

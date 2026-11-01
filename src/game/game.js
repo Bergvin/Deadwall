@@ -57,7 +57,6 @@ export class Game {
       onNewGame: () => this.chooseMap(),
       onPlayMap: (id) => this.newGame(undefined, id),
       onRetry: () => this.newGame(undefined, this.lastMap),
-      onClassic: () => { location.href = './classic.html'; },
       onMenu: () => this.toMenu(),
       onCommander: () => this.openCommander(),
       onChooseArtifact: (i) => this.pickArtifact(i),

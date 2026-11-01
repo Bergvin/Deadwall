@@ -1,11 +1,13 @@
 // The runner(s): the Monk model made silly. A huge wobbling head, bright clothes and a
-// wobbly tower of ammo crates (one per crate he carries) with a floppy hat on top.
+// wobbly tower of ammo crates (one per crate he carries).
 // Runs frantically, crouches to fill towers, gets knocked silly (stars) by zombies.
 // The crates are stacked on his head, so the player can count them from above.
 import * as THREE from 'three';
 import { MODELS } from '../config/assets.js';
 
 const TINT = new THREE.Color(1.1, 1, 0.95);
+/** Gap between the top of his (huge) head and the first crate, in world units. */
+const HEAD_GAP = 0.02;
 
 export class RunnerView {
   /** unit id -> node */
@@ -23,8 +25,6 @@ export class RunnerView {
     this.crateMat = new THREE.MeshLambertMaterial({ color: 0x9a6a38 });
     this.strapMat = new THREE.MeshLambertMaterial({ color: 0x3a2a1a });
     this.bandGeom = new THREE.BoxGeometry(0.31, 0.04, 0.25);
-    this.hatMat = new THREE.MeshLambertMaterial({ color: 0xd8402a });
-    this.pomMat = new THREE.MeshLambertMaterial({ color: 0xfff0c0 });
     this.starMat = new THREE.MeshBasicMaterial({ color: 0xffe060 });
     this.starGeom = new THREE.OctahedronGeometry(0.06, 0);
     this.hitGeom = new THREE.CylinderGeometry(0.4, 0.4, 1.6, 8);
@@ -64,17 +64,18 @@ export class RunnerView {
     let head = null;
     root.traverse((o) => { if (o.isBone && o.name === 'Head') head = o; });
     if (head) head.scale.setScalar(this.cfg.headScale);
-    // ...with a floppy hat and a wobbly tower of ammo crates balanced on top. These live in
-    // world units in their own group that follows the head (the model itself is scaled).
+    // How far the top of the scaled head sits above the head bone, so the crates start on
+    // top of it instead of inside it (the model's highest point is the head).
+    let headTop = 0.32;
+    if (head) {
+      root.updateMatrixWorld(true);
+      root.traverse((o) => { if (o.isSkinnedMesh) o.skeleton.update(); });
+      const box = new THREE.Box3().setFromObject(root, true);
+      headTop = box.max.y - head.getWorldPosition(new THREE.Vector3()).y;
+    }
+    // ...with a wobbly tower of ammo crates balanced on top. It lives in world units in its
+    // own group that follows the head (the model itself is scaled).
     const deco = new THREE.Group();
-    const hat = new THREE.Group();
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.32, 10), this.hatMat);
-    cone.position.y = 0.14;
-    cone.rotation.z = 0.4;
-    const pom = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), this.pomMat);
-    pom.position.set(-0.12, 0.28, 0);
-    hat.add(cone, pom);
-    deco.add(hat);
     const pack = new THREE.Group();
     deco.add(pack);
     const stars = new THREE.Group();
@@ -90,7 +91,7 @@ export class RunnerView {
     hitbox.userData.runnerId = u.id;
     this.group.add(hitbox);
     this.group.add(root);
-    const node = { root, mixer, actions, base: 'idle', pack, hat, crates: -1, stars, hitbox, head, deco };
+    const node = { root, mixer, actions, base: 'idle', pack, stackTop: 0, headTop, crates: -1, stars, hitbox, head, deco };
     this.#nodes.set(u.id, node);
     return node;
   }
@@ -126,8 +127,7 @@ export class RunnerView {
       band.rotation.y = c.rotation.y;
       node.pack.add(c, band);
     }
-    // The hat sits on top of the stack.
-    node.hat.position.y = shown * 0.18;
+    node.stackTop = shown * 0.18;
   }
 
   /** @param {number} dt scaled game time */
@@ -152,13 +152,12 @@ export class RunnerView {
         node.deco.position.set(u.x, 1, u.z);
       }
       // The crates sit on top of the big head and sway as he runs.
-      node.deco.position.y += 0.32;
+      node.deco.position.y += node.headTop + HEAD_GAP;
       node.deco.rotation.y = u.facing;
       node.pack.rotation.z = Math.sin(this.time * (run ? 14 : 3)) * (run ? 0.1 : 0.03);
       node.pack.rotation.x = Math.sin(this.time * (run ? 9 : 2)) * (run ? 0.06 : 0.02);
-      node.hat.rotation.z = node.pack.rotation.z * 1.5;
       node.stars.visible = state === 'bonked';
-      node.stars.position.y = 0.3 + node.hat.position.y;
+      node.stars.position.y = 0.15 + node.stackTop;
       node.stars.rotation.y += dt * 6;
     }
   }

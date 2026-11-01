@@ -1,6 +1,6 @@
 // Persistent records in localStorage. Every read is validated; a missing, corrupted or
 // outdated save falls back to defaults and can never stop the game from starting.
-// This game has its own key: DW Classic keeps its old save ('deadwall.save') untouched.
+// Its own key ('deadwall.towers.save'); the old wall-building game's save is ignored.
 import { commanderDefaults, slotCount } from './commander.js';
 import { PERKS, ARTIFACTS, RARITIES, COMMANDER } from '../config/commander.js';
 import { MAPS } from '../config/maps.js';

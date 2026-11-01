@@ -1,7 +1,7 @@
 {
   "name": "deadwall",
   "version": "1.0.0",
-  "description": "DEADWALL - isometric zombie fortress survival",
+  "description": "DEADWALL - isometric zombie tower defense",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

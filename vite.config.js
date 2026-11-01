@@ -8,7 +8,6 @@ export default defineConfig({
   // Modern target so top-level await works in the production build.
   build: {
     target: 'es2022',
-    // Two pages: the current game (index.html) and the frozen DW Classic (classic.html).
-    rollupOptions: { input: { main: resolve(import.meta.dirname, 'index.html'), classic: resolve(import.meta.dirname, 'classic.html') } },
+    rollupOptions: { input: { main: resolve(import.meta.dirname, 'index.html') } },
   },
 });

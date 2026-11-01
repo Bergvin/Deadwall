@@ -56,10 +56,6 @@ export class Screens {
     start.addEventListener('click', () => this.handlers.onNewGame());
     box.append(start);
     box.append(this.#commanderButton(save.commander));
-    const classic = h('button', 'btn big classicbtn', 'DW Classic');
-    classic.title = 'The original DeadWall: walls, a champion hero and elemental towers on the walls';
-    classic.addEventListener('click', () => this.handlers.onClassic());
-    box.append(classic);
     box.append(h('div', 'records',
       `<span>Best wave</span><b>${save.bestWave || '—'}</b>`
       + `<span>High score</span><b>${save.highScore || '—'}</b>`

@@ -7,12 +7,21 @@ export class AssetLibrary {
   #protos = new Map();
   #clips = new Map();
 
-  /** @param {Record<string, {url:string, fit?:{axis:string,size:number}}>} registry */
+  /**
+   * @param {Record<string, {url:string, fit?:{axis:string,size:number}, clipsFrom?:string[]}>} registry
+   *   clipsFrom: animation-only files whose clips play on this model (same bone names).
+   */
   async load(registry, names = Object.keys(registry)) {
     const loader = new GLTFLoader();
+    const shared = new Map();
+    const clipFile = (url) => {
+      if (!shared.has(url)) shared.set(url, loader.loadAsync(url));
+      return shared.get(url);
+    };
     await Promise.all(names.map(async (name) => {
       const def = registry[name];
       const gltf = await loader.loadAsync(def.url);
+      for (const url of def.clipsFrom ?? []) gltf.animations.push(...(await clipFile(url)).animations);
       const root = gltf.scene;
       if (def.fit) {
         const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3());

@@ -525,7 +525,6 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 .mapcard .mbest b { color: var(--gold); }
 .mapcard .mlock { font-size: 12px; color: var(--muted); margin-top: 6px; }
 .screen .box.wide { width: min(980px, 94vw); box-sizing: border-box; }
-.screen .classicbtn { border-color: #6a5a40; color: #c8b890; }
 .screen .newrec.unlock { color: #7cff9a; }
 @media (max-width: 1500px) { .card.tcard { width: 104px; } .runnerbar { max-width: 220px; } .runnerbar .spell { width: 50px; } .runnerbar .spell .aname { display: none; } }
 @media (max-width: 1100px) { .runnerbar .rname { font-size: 12px; } }

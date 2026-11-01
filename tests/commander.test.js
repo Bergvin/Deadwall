@@ -193,7 +193,7 @@ test('save: old saves start fresh, garbage commander data is cleaned, maps unloc
   const old = { version: 2, bestWave: 12, highScore: 3400, totalKills: 900, runs: 7, settings: { muted: true } };
   const s = sanitize(old);
   assert.equal(s.version, 3);
-  assert.equal(s.bestWave, 0, 'DW Classic progress stays in DW Classic');
+  assert.equal(s.bestWave, 0, 'progress from the old wall-building game is not carried over');
   assert.deepEqual(s.commander, commanderDefaults());
 
   const messy = sanitize({

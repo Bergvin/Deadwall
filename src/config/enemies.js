@@ -33,7 +33,7 @@ export const ZOMBIES = {
     speed: 1.7,
     damage: 3, attackInterval: 0.8,
     reward: 5, xp: 10,
-    model: 'runner', scale: 0.95, tint: [1.1, 0.95, 0.9],
+    model: 'skeleton', scale: 0.95, tint: null,
   },
   brute: {
     name: 'Brute',
@@ -62,7 +62,7 @@ export const ZOMBIES = {
     speed: 0.55,
     damage: 12, attackInterval: 1.8,
     reward: 20, xp: 50,
-    model: 'brute', scale: 1.3, tint: [1.2, 0.6, 0.45],
+    model: 'puglin', scale: 1.3, tint: null,
     /** Attacks towers within `range` of it: each hit drains ammo and jams; moves on after `hits`. */
     smasher: { range: 2.2, hits: 3, ammoDrain: 0.35, jam: 2 },
   },
@@ -73,7 +73,7 @@ export const ZOMBIES = {
     speed: 1.0,
     damage: 6, attackInterval: 1,
     reward: 9, xp: 18,
-    model: 'runner', scale: 1, tint: [0.55, 0.42, 0.9],
+    model: 'skeletonRogue', scale: 1, tint: null,
     stealth: true,
   },
   ghost: {
@@ -83,7 +83,7 @@ export const ZOMBIES = {
     speed: 0.8,
     damage: 6, attackInterval: 1.2,
     reward: 9, xp: 18,
-    model: 'walker', scale: 0.95, tint: [0.8, 1.15, 1.45],
+    model: 'skeletonMage', scale: 1, tint: [0.8, 1.05, 1.35],
     immune: ['physical'],
   },
   ironclad: {
@@ -93,7 +93,7 @@ export const ZOMBIES = {
     speed: 0.55,
     damage: 12, attackInterval: 1.6,
     reward: 15, xp: 35,
-    model: 'brute', scale: 1.25, tint: [0.72, 0.78, 0.9],
+    model: 'skeletonWarrior', scale: 1.1, tint: null,
     immuneTags: ['sharp'],
   },
   rotter: {
@@ -103,7 +103,7 @@ export const ZOMBIES = {
     speed: 0.7,
     damage: 8, attackInterval: 1.4,
     reward: 10, xp: 22,
-    model: 'walker', scale: 1.05, tint: [0.75, 0.95, 0.5],
+    model: 'runner', scale: 1.05, tint: [0.75, 0.95, 0.5],
     regen: { pct: 0.08, delay: 1.5 },
   },
 

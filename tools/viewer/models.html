@@ -1,0 +1,240 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>DeadWall models</title>
+<style>
+  body { margin: 0; background: #1b1a1d; color: #e8e0d0; font: 13px system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; }
+  #bar { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 2; }
+  #bar a { color: #c9b98f; text-decoration: none; padding: 4px 12px; border: 1px solid #4a4238; border-radius: 4px; background: #262328; }
+  #bar a.on { color: #ffc23d; border-color: #ffc23d; }
+  .tag { position: fixed; transform: translate(-50%, 0); text-align: center; pointer-events: none; width: 150px; }
+  .tag b { display: block; font-size: 14px; color: #ffd98a; }
+  .tag span { color: #a99f90; font-size: 11px; }
+  .tag i { display: inline-block; margin-top: 2px; font-style: normal; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #c8a0ff; }
+</style></head>
+<body>
+<div id="bar"></div>
+<script type="module">
+// Dev tool: every model the game uses, as the game shows it (fit, per-type scale and tint,
+// looping move clip). Open /tools/viewer/models.html?g=enemies while `npm run dev` runs.
+// Drag to orbit, wheel to zoom.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { MODELS } from '../../src/config/assets.js';
+import { ZOMBIES } from '../../src/config/enemies.js';
+import { RUNNER } from '../../src/config/runner.js';
+import { AssetLibrary } from '../../src/render/assets.js';
+import { RunnerView } from '../../src/render/runnerView.js';
+
+const GROUPS = {
+  enemies: 'Enemies',
+  bosses: 'Bosses',
+  runner: 'Runner',
+  scenery: 'Towers & scenery',
+  candidates: 'Candidates',
+  new: 'New packs',
+};
+// Newly downloaded packs (in assets/, not committed). Bestiary models have no clips of their
+// own: they share Quaternius' humanoid rig, so clips come from the Universal Animation
+// Library. KayKit skeletons take clips from KayKit's Rig_Medium files.
+const BE = 'assets/bestiary/Bestiary - Dungeon Monsters Kit[Standard]/Exports/GLB (Godot-Unreal)/';
+const UAL1 = 'assets/ual1/Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb';
+const UAL2 = 'assets/ual2/Universal Animation Library 2[Standard]/Unreal-Godot/UAL2_Standard.glb';
+const KK = 'assets/kaykit-skeletons/KayKit_Skeletons_1.1_FREE/';
+const KKMOVE = `${KK}Animations/gltf/Rig_Medium/Rig_Medium_MovementBasic.glb`;
+const KKGEN = `${KK}Animations/gltf/Rig_Medium/Rig_Medium_General.glb`;
+const NEW = [
+  ['Imp', BE + 'Imp.glb', UAL2, 'Zombie_Walk_Fwd_Loop'],
+  ['Imp', BE + 'Imp.glb', UAL1, 'Jog_Fwd_Loop'],
+  ['Imp', BE + 'Imp.glb', UAL2, 'Zombie_Scratch'],
+  ['Puglin', BE + 'Puglin.glb', UAL2, 'Zombie_Walk_Fwd_Loop'],
+  ['Puglin', BE + 'Puglin.glb', UAL1, 'Sprint_Loop'],
+  ['Puglin', BE + 'Puglin.glb', UAL1, 'Sword_Attack'],
+  ['Skeleton Minion', `${KK}characters/gltf/Skeleton_Minion.glb`, KKMOVE, 'Walking_A'],
+  ['Skeleton Warrior', `${KK}characters/gltf/Skeleton_Warrior.glb`, KKMOVE, 'Walking_B'],
+  ['Skeleton Rogue', `${KK}characters/gltf/Skeleton_Rogue.glb`, KKMOVE, 'Running_A'],
+  ['Skeleton Mage', `${KK}characters/gltf/Skeleton_Mage.glb`, KKMOVE, 'Walking_C'],
+  ['Skeleton Minion', `${KK}characters/gltf/Skeleton_Minion.glb`, KKGEN, 'Death_A'],
+  ['Zombie (now)', 'assets/quaternius-zombie-kit/Characters/glTF/Zombie_Basic.gltf', null, 'Walk'],
+];
+// Raw models in assets/ (not committed) that could replace enemy models, numbered so
+// we can talk about them. All shown at the same height.
+const KG = 'assets/kenney-graveyard/Models/GLB format/';
+const QZ = 'assets/quaternius-zombie-kit/Characters/glTF/';
+const QB = 'assets/quaternius-monsters/Big/glTF/';
+const QF = 'assets/quaternius-monsters/Flying/glTF/';
+const QS = 'assets/quaternius-monsters/Blob/glTF/';
+const CANDIDATES = [
+  [KG, 'character-zombie.glb'], [KG, 'character-skeleton.glb'], [KG, 'character-ghost.glb'], [KG, 'character-vampire.glb'], [KG, 'character-keeper.glb'],
+  [QZ, 'Zombie_Basic.gltf'], [QZ, 'Zombie_Arm.gltf'], [QZ, 'Zombie_Chubby.gltf'], [QZ, 'Zombie_Ribcage.gltf'],
+  [QF, 'Ghost.gltf'], [QF, 'Ghost_Skull.gltf'], [QF, 'Goleling.gltf'], [QF, 'Goleling_Evolved.gltf'], [QF, 'Hywirl.gltf'], [QF, 'Demon.gltf'], [QF, 'Squidle.gltf'],
+  [QB, 'Orc.gltf'], [QB, 'Orc_Skull.gltf'], [QB, 'Tribal.gltf'], [QB, 'Ninja.gltf'], [QB, 'MushroomKing.gltf'], [QB, 'Demon.gltf'], [QB, 'BlueDemon.gltf'], [QB, 'Yeti.gltf'], [QB, 'Alien.gltf'], [QB, 'Cactoro.gltf'],
+  [QS, 'GreenSpikyBlob.gltf'], [QS, 'GreenBlob.gltf'], [QS, 'Mushnub_Evolved.gltf'], [QS, 'Wizard.gltf'], [QS, 'Orc.gltf'],
+];
+const MOVE_CLIPS = ['walk', 'Walk', 'Run', 'Fast_Flying', 'Flying_Idle', 'idle', 'Idle'];
+const group = new URLSearchParams(location.search).get('g') ?? 'enemies';
+document.getElementById('bar').innerHTML = Object.entries(GROUPS)
+  .map(([k, v]) => `<a href="?g=${k}" class="${k === group ? 'on' : ''}">${v}</a>`).join('');
+
+const trait = (z) => [z.stealth && 'stealth', z.immune && 'no physical', z.immuneTags && 'no sharp', z.regen && 'regrows', z.smasher && 'smashes towers', z.armor && `armor ${Math.round(z.armor * 100)}%`, z.resist && `resist ${Math.round(z.resist * 100)}%`].filter(Boolean).join(' · ');
+
+/** Entries to show: {model, label, sub, traits, scale, tint, clip}. */
+function entries() {
+  if (group === 'enemies' || group === 'bosses') {
+    return Object.values(ZOMBIES).filter((z) => !!z.boss === (group === 'bosses')).map((z) => ({
+      model: z.model, label: z.name, sub: `${z.hp} HP · speed ${z.speed}`, traits: trait(z),
+      scale: z.scale ?? 1, tint: z.tint, clip: MODELS[z.model].zanims?.move,
+    }));
+  }
+  if (group === 'candidates') {
+    return CANDIDATES.map(([dir, file], i) => ({
+      url: dir + file, label: `${i + 1}. ${file.replace(/\.(glb|gltf)$/, '').replace('character-', '')}`,
+      sub: dir.split('/')[1].replace('quaternius-', 'Q ').replace('kenney-', 'Kenney '), scale: 1, fitHeight: 0.9, autoClip: true,
+    }));
+  }
+  if (group === 'new') {
+    return NEW.map(([name, url, animUrl, clip], i) => ({
+      url, animUrl, clip, label: `N${i + 1}. ${name}`, sub: clip, scale: 1, fitHeight: 0.9,
+    }));
+  }
+  if (group === 'runner') {
+    // Drawn by the game's own RunnerView: one unit per state, fake runner data.
+    return [
+      { label: 'Idle', sub: 'waiting at the house', state: 'idle', crates: 0 },
+      { label: 'Running', sub: 'carrying 2 crates', state: 'run', crates: 2, moving: true },
+      { label: 'Big load', sub: '5 crates (perks)', state: 'run', crates: 5, moving: true },
+      { label: 'Working', sub: 'filling / building a tower', state: 'refill', crates: 1 },
+      { label: 'Bonked', sub: 'knocked over by a zombie', state: 'bonked', crates: 1 },
+    ];
+  }
+  return Object.keys(MODELS).filter((k) => !MODELS[k].zanims && !MODELS[k].anims)
+    .map((k) => ({ model: k, label: k, sub: MODELS[k].url.split('/').pop(), scale: 1 }));
+}
+
+const r = new THREE.WebGLRenderer({ antialias: true });
+r.setPixelRatio(devicePixelRatio); r.setSize(innerWidth, innerHeight);
+document.body.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x1b1a1d);
+scene.add(new THREE.HemisphereLight(0xdde4ff, 0x3a3028, 2.2));
+const sun = new THREE.DirectionalLight(0xfff0dd, 2.4); sun.position.set(4, 8, 6); scene.add(sun);
+
+const list = entries();
+const perRow = Math.min(list.length, group === 'scenery' || group === 'candidates' ? 8 : group === 'new' ? 6 : 5);
+const gap = group === 'bosses' || group === 'runner' ? 3.2 : group === 'scenery' ? 1.6 : 1.7;
+const rows = Math.ceil(list.length / perRow);
+const loader = new GLTFLoader();
+const cache = new Map();
+async function load(name, entry) {
+  if (entry?.url) {
+    const g = await loader.loadAsync(`../../${entry.url}`);
+    if (entry.animUrl) g.animations = (await loadAnims(entry.animUrl)).animations;
+    const size = new THREE.Box3().setFromObject(g.scene).getSize(new THREE.Vector3());
+    g.scene.scale.multiplyScalar(entry.fitHeight / size.y);
+    return g;
+  }
+  if (!cache.has(name)) {
+    cache.set(name, loader.loadAsync(`../../${MODELS[name].url}`).then(async (g) => {
+      for (const url of MODELS[name].clipsFrom ?? []) g.animations.push(...(await loadAnims(url)).animations);
+      const fit = MODELS[name].fit;
+      if (fit) {
+        const size = new THREE.Box3().setFromObject(g.scene).getSize(new THREE.Vector3());
+        g.scene.scale.multiplyScalar(fit.size / size[fit.axis]);
+      }
+      return g;
+    }));
+  }
+  return cache.get(name);
+}
+
+const animCache = new Map();
+function loadAnims(url) {
+  if (!animCache.has(url)) animCache.set(url, loader.loadAsync(`../../${url}`));
+  return animCache.get(url);
+}
+const mixers = [];
+const tags = [];
+const disc = new THREE.Mesh(new THREE.CircleGeometry(0.6, 32), new THREE.MeshStandardMaterial({ color: 0x3a3530 }));
+disc.rotation.x = -Math.PI / 2;
+const place = (i) => {
+  const col = i % perRow, row = Math.floor(i / perRow);
+  return [(col - (perRow - 1) / 2) * gap, (row - (rows - 1) / 2) * gap * 2.2];
+};
+const label = (e, x, z) => {
+  const el = document.createElement('div');
+  el.className = 'tag';
+  el.innerHTML = `<b>${e.label}</b><span>${e.sub}</span>${e.traits ? `<br><i>${e.traits}</i>` : ''}`;
+  document.body.append(el);
+  tags.push({ el, pos: new THREE.Vector3(x, -0.15, z + gap * 0.42) });
+};
+let runnerView = null;
+if (group === 'runner') {
+  const assets = new AssetLibrary();
+  await assets.load({ quartermaster: { ...MODELS.quartermaster, url: `../../${MODELS.quartermaster.url}` } });
+  const units = list.map((e, i) => {
+    const [x, z] = place(i);
+    const d = disc.clone(); d.position.set(x, 0.001, z); scene.add(d);
+    label(e, x, z);
+    return { id: i + 1, x, z, facing: 0.5, crates: e.crates, state: e.state, moving: !!e.moving };
+  });
+  runnerView = new RunnerView(scene, assets, { units, main: units[0] }, { on() {} }, RUNNER);
+}
+await Promise.all((group === 'runner' ? [] : list).map(async (e, i) => {
+  const g = await load(e.model, e);
+  const o = SkeletonUtils.clone(g.scene);
+  o.scale.multiplyScalar(e.scale);
+  // Same effect as the baked horde's per-instance colour: texture × tint.
+  if (e.tint) {
+    o.traverse((m) => {
+      if (!m.isMesh) return;
+      m.material = m.material.clone();
+      m.material.color.multiply(new THREE.Color(...e.tint));
+    });
+  }
+  const [x, z] = place(i);
+  o.position.set(x, 0, z);
+  // Raw candidates may be authored off-centre (flying ones): stand them on their disc.
+  if (e.url) {
+    const box = new THREE.Box3().setFromObject(o);
+    const c = box.getCenter(new THREE.Vector3());
+    o.position.x += x - c.x; o.position.z += z - c.z; o.position.y -= Math.min(0, box.min.y);
+  }
+  scene.add(o);
+  const d = disc.clone(); d.scale.setScalar(gap / 1.7); d.position.set(x, 0.001, z); scene.add(d);
+  const clip = e.autoClip ? MOVE_CLIPS.map((n) => g.animations.find((c) => c.name === n)).find(Boolean)
+    : e.clip && g.animations.find((c) => c.name === e.clip);
+  if (clip) {
+    const mx = new THREE.AnimationMixer(o);
+    mx.clipAction(clip).play();
+    mx.update(Math.random());
+    mixers.push(mx);
+  }
+  label(e, x, z);
+}));
+
+const span = Math.max(perRow * gap, rows * gap * 2.2);
+const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 200);
+cam.position.set(0, span * 0.75, span * 1.35);
+const controls = new OrbitControls(cam, r.domElement);
+controls.target.set(0, group === 'bosses' ? 0.8 : 0.4, 0);
+controls.update();
+addEventListener('resize', () => {
+  r.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix();
+});
+
+const clock = new THREE.Clock();
+const v = new THREE.Vector3();
+r.setAnimationLoop(() => {
+  const dt = clock.getDelta();
+  for (const m of mixers) m.update(dt);
+  runnerView?.update(dt);
+  controls.update();
+  r.render(scene, cam);
+  for (const t of tags) {
+    v.copy(t.pos).project(cam);
+    t.el.style.left = `${(v.x * 0.5 + 0.5) * innerWidth}px`;
+    t.el.style.top = `${(-v.y * 0.5 + 0.5) * innerHeight}px`;
+  }
+});
+</script>
+</body></html>
