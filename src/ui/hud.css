@@ -531,3 +531,40 @@ html, body { margin: 0; height: 100%; background: #15161a; overflow: hidden; col
 /* Tall screens (game over with an artifact choice) scroll instead of being cut off. */
 .screen { overflow-y: auto; align-items: flex-start; padding: 16px 0; box-sizing: border-box; }
 .screen .box { margin: auto; }
+
+/* Tutorial: hint box, cards (hold time), enemy introductions and the field guide. */
+.coach { position: absolute; left: 50%; bottom: 190px; transform: translateX(-50%); width: min(460px, calc(100vw - 32px)); box-sizing: border-box; padding: 10px 14px; background: rgba(24, 20, 14, 0.96); border: 1px solid var(--gold); border-radius: 6px; box-shadow: 0 0 18px rgba(232, 182, 76, 0.25); z-index: 5; }
+.coach[hidden] { display: none; }
+.coach .ctitle { font-family: var(--font); color: var(--gold); font-size: 15px; margin-bottom: 4px; }
+.coach .ctext { font-size: 13px; line-height: 1.5; }
+.coach kbd, .tutbox kbd { color: var(--text); border: 1px solid var(--border-hi); border-radius: 3px; padding: 0 4px; font-size: 11px; }
+.cbtns { display: flex; gap: 8px; margin-top: 10px; justify-content: center; }
+.cbtns .btn { width: auto; margin: 0; padding: 5px 16px; }
+.btn.ghost { background: none; border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--text); border-color: var(--border); }
+.tutpoint { animation: tutglow 1.2s ease-in-out infinite; }
+@keyframes tutglow { 0%, 100% { box-shadow: 0 0 0 2px rgba(232, 182, 76, 0.9); } 50% { box-shadow: 0 0 0 2px rgba(232, 182, 76, 0.3), 0 0 22px 6px rgba(232, 182, 76, 0.55); } }
+.tutlayer { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(6, 5, 4, 0.6); z-index: 10; }
+.tutlayer[hidden] { display: none; }
+.tutbox { width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 80px); overflow-y: auto; box-sizing: border-box; padding: 20px 24px; background: rgba(18, 16, 14, 0.97); border: 1px solid var(--border-hi); border-radius: 8px; }
+.tutbox.wide { width: min(760px, calc(100vw - 32px)); }
+.tutbox h2 { font-family: var(--font); margin: 0 0 8px; color: #e8d8b8; }
+.tutbox .kicker { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); }
+.tutbody { font-size: 14px; line-height: 1.55; }
+.tutbody p { margin: 0 0 10px; }
+.tutbody .edesc { color: var(--text); }
+.tutbody .etip { color: #ffe7a0; font-size: 13px; }
+.tutbody .traits { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+.tutbody .trait { font-size: 11px; padding: 1px 7px; border-radius: 10px; border: 1px solid #8a5ad0; color: #d8c0ff; }
+.tutbody .match { display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px; font-size: 13px; }
+.tutbody .mlabel { flex: 0 0 120px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+.tutbody .mlabel.good { color: var(--green); }
+.tutbody .mlabel.bad { color: var(--red); }
+.tutbody .mchips { display: flex; flex-wrap: wrap; gap: 4px; }
+.tutbody .tchip { font-size: 12px; padding: 1px 8px; border-radius: 4px; background: var(--bg-raised); border: 1px solid var(--border); }
+.tutbody .tchip.good { border-color: #3a7a40; }
+.tutbody .tchip.bad { border-color: #7a3a34; opacity: 0.85; }
+.tutbody .dim { color: var(--muted); font-size: 12px; }
+.gtabs { display: flex; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
+.gentry { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.gentry .gname { font-family: var(--font); font-size: 16px; color: #e8d8b8; margin-bottom: 4px; }

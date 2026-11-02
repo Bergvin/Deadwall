@@ -31,6 +31,9 @@ export class Game {
   async init(container) {
     this.container = container;
     this.state = STATE.MENU;
+    this.userPaused = false;
+    /** Names of the overlays holding game time (see setHold). */
+    this.holds = new Set();
     this.save = loadSave();
     const { renderer, scene, center, ground } = createStage(container, MAP, CAMERA.distance);
     this.renderer = renderer;
@@ -107,7 +110,16 @@ export class Game {
       zombieView: this.zombieView, projectileView: this.projectileView,
       effects: this.effects, fx: this.fx, bars: this.bars, sfx: this.sfx, floaters: this.floaters,
       loop: this.loop, seed, mapId, togglePause: () => this.togglePause(),
-      resume: () => this.resume(), setHold: (on) => this.setHold(on),
+      resume: () => this.resume(), setHold: (on, who) => this.setHold(on, who),
+      tutorial: {
+        enabled: this.save.settings.tutorial,
+        steps: [...this.save.tutorial.steps],
+        enemies: [...this.save.tutorial.enemies],
+        mark: (kind, id) => {
+          if (!this.save.tutorial[kind].includes(id)) this.save.tutorial[kind].push(id);
+          writeSave(this.save);
+        },
+      },
       // Every run plays with the Commander's perks, skills and equipped artifacts.
       config: runConfig(CFG, this.save.commander),
       settings: this.save.settings, setSetting: (k, v) => this.setSetting(k, v),
@@ -195,6 +207,8 @@ export class Game {
   /** Changes a persistent setting, applies it immediately and saves it. */
   setSetting(key, value) {
     this.save.settings[key] = value;
+    // Turning the tutorial back on starts it over.
+    if (key === 'tutorial' && value) this.save.tutorial = { steps: [], enemies: [] };
     writeSave(this.save);
     this.applySettings();
   }
@@ -213,8 +227,8 @@ export class Game {
   }
 
   // Game time stops when the player pauses (the Paused panel) or while an overlay holds it
-  // (the perk picker). The two are kept apart so releasing a hold never unpauses the player
-  // and the panel always matches the player's pause.
+  // (the perk picker, tutorial cards; each holds under its own name). The two are kept apart
+  // so releasing a hold never unpauses the player and the panel always matches the pause.
   togglePause() {
     if (this.state !== STATE.PLAYING) return;
     this.userPaused = !this.userPaused;
@@ -228,19 +242,19 @@ export class Game {
     this.#applyPause();
   }
 
-  setHold(on) {
-    this.held = on;
+  setHold(on, who = 'overlay') {
+    if (on) this.holds.add(who); else this.holds.delete(who);
     this.#applyPause();
   }
 
   #applyPause() {
-    this.loop.paused = !!(this.userPaused || this.held);
+    this.loop.paused = !!(this.userPaused || this.holds.size);
     this.screens.setPaused(!!this.userPaused);
   }
 
   #resetPause() {
     this.userPaused = false;
-    this.held = false;
+    this.holds.clear();
     this.#applyPause();
   }
 

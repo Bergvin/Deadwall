@@ -34,7 +34,7 @@ export class Screens {
     slider.addEventListener('input', () => this.handlers.setSetting('volume', slider.value / 100));
     vol.append(slider);
     box.append(vol);
-    for (const [key, label] of [['muted', 'Mute sound'], ['shadows', 'Shadows']]) {
+    for (const [key, label] of [['muted', 'Mute sound'], ['shadows', 'Shadows'], ['tutorial', 'Tutorial tips (turn on again to restart)']]) {
       const row = h('label', 'setting check');
       const cb = h('input');
       cb.type = 'checkbox';

@@ -21,12 +21,18 @@ const DEFAULTS = () => ({
     /** Spells that auto-cast (spell id -> on); autoCastAll covers every spell without a choice. */
     autoCast: {},
     autoCastAll: false,
+    /** Tutorial steps and enemy introduction cards (progress in `tutorial`). */
+    tutorial: true,
   },
+  /** Tutorial steps done and enemy types already introduced (ids). */
+  tutorial: { steps: [], enemies: [] },
   commander: commanderDefaults(),
 });
 
 const bool = (v, fallback) => (typeof v === 'boolean' ? v : fallback);
 
+/** A list of distinct plain ids (letters only); anything else is dropped. */
+const ids = (v) => [...new Set(Array.isArray(v) ? v.filter((x) => typeof x === 'string' && /^[a-zA-Z]+$/.test(x)) : [])];
 const nonNegInt = (v) => (Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
 const isRarity = (r) => RARITIES.includes(r);
 const validPerk = (p) => p && PERKS[p.id] && isRarity(p.rarity) && PERKS[p.id].values[RARITIES.indexOf(p.rarity)] != null;
@@ -93,6 +99,11 @@ export function sanitize(raw) {
       showRanges: bool(raw.settings?.showRanges, d.settings.showRanges),
       autoCast,
       autoCastAll: bool(raw.settings?.autoCastAll, d.settings.autoCastAll),
+      tutorial: bool(raw.settings?.tutorial, d.settings.tutorial),
+    },
+    tutorial: {
+      steps: ids(raw.tutorial?.steps),
+      enemies: ids(raw.tutorial?.enemies),
     },
     commander: sanitizeCommander(raw.commander),
   };

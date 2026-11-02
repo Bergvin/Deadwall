@@ -11,6 +11,7 @@ import { GAME_SPEEDS } from '../config/game.js';
 import { TOWER_KEYS, SPELL_KEYS, keyLabel } from '../input/interaction.js';
 import { DamageMeter } from './damageMeter.js';
 import { towerStats } from '../core/towers.js';
+import { Tutorial } from './tutorial.js';
 
 const h = (tag, cls, html) => {
   const el = document.createElement(tag);
@@ -58,10 +59,12 @@ export class Hud {
     this.el.append(this.toasts, this.banner, this.vignette, this.bossBar, this.preview, this.alerts);
     this.picker = new PerkPicker(this);
     this.meter = new DamageMeter(this.el, sim, { select: (sel) => this.actions.select(sel) });
-    // The first time a new kind of enemy turns up: what it is and what beats it.
+    // Guided steps, enemy introduction cards and the field guide.
+    this.tutorial = new Tutorial(this, actions.tutorial);
+    // Without the tutorial: a toast the first time an enemy with a trait turns up.
     this.seenTypes = new Set();
     sim.events.on('zombieSpawned', (z) => {
-      if (this.seenTypes.has(z.type)) return;
+      if (this.tutorial.enabled || this.seenTypes.has(z.type)) return;
       this.seenTypes.add(z.type);
       const t = this.cfg.ZOMBIES[z.type];
       if (t.stealth || t.immune || t.immuneTags || t.regen) this.toast(`<b>${t.name}</b>: ${t.description}`, 'long');
@@ -128,7 +131,10 @@ export class Hud {
     this.muteBtn = h('button', 'btn icon');
     this.muteBtn.title = 'Sound on/off';
     this.muteBtn.addEventListener('click', () => this.actions.toggleMute());
-    controls.append(this.waveBtn, this.pauseBtn, this.muteBtn);
+    const guideBtn = h('button', 'btn icon guidebtn', '?');
+    guideBtn.title = 'Field guide: every enemy and which towers beat it';
+    guideBtn.addEventListener('click', () => this.tutorial.openGuide());
+    controls.append(this.waveBtn, this.pauseBtn, this.muteBtn, guideBtn);
     this.speedBtns = GAME_SPEEDS.map((s) => {
       const b = h('button', 'btn icon speed', `${s}×`);
       b.title = `Game speed ${s}×`;
@@ -569,6 +575,7 @@ export class Hud {
     }
     this.#tickRunnerBar();
     this.picker.tick();
+    this.tutorial.tick();
     this.meter.tick(false, 1 / 60);
     this.meter.setSelected(this.selection?.kind === 'tower' ? this.selection.id : 0);
     this.dyn?.();
@@ -590,6 +597,7 @@ export class Hud {
 
   dispose() {
     this.picker.close();
+    this.tutorial.dispose();
     this.meter.dispose();
     this.el.remove();
   }

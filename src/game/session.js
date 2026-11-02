@@ -66,7 +66,8 @@ export class Session {
       startWave: () => { if (sim.waves.startNext()) shared.resume(); },
       togglePause: () => shared.togglePause(),
       /** Stops/starts game time without the pause menu (the perk picker uses it). */
-      holdTime: (on) => shared.setHold(on),
+      holdTime: (on, who = 'picker') => shared.setHold(on, who),
+      tutorial: shared.tutorial,
       setSpeed: (s) => { loop.speed = s; },
       isPaused: () => loop.paused,
       getSpeed: () => loop.speed,
