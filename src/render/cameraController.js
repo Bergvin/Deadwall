@@ -68,6 +68,7 @@ export class CameraController {
   /** Pan by a screen-space pixel delta (drag). */
   panPixels(dx, dy) {
     const k = this.unitsPerPixel;
+    if (!Number.isFinite(k)) return; // hidden canvas (no size yet)
     const yaw = THREE.MathUtils.degToRad(this.yawDeg);
     const pitch = THREE.MathUtils.degToRad(this.pitchDeg);
     // Screen-up maps to ground-forward stretched by 1/sin(pitch) under the tilted camera.
